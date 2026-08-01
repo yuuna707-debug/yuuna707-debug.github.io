@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>貼り付け → Shift-JIS QR</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#fff; --ink:#1b1f24; --sub:#5b6470;
+    --line:#d7dbe0; --accent:#0b6bcb; --warn:#b3261e; --ok:#1f7a3d;
+    --radius:12px;
+  }
+  /* ★ダークモードには追従しない。QRを反転されると読めなくなるため。 */
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;
+       font-size:17px;line-height:1.6;-webkit-text-size-adjust:100%}
+  .wrap{max-width:860px;margin:0 auto;padding:16px 14px 64px}
+  h1{font-size:1.25rem;margin:.2em 0 .1em}
+  .lead{color:var(--sub);font-size:.9rem;margin:0 0 18px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+          padding:16px;margin-bottom:16px}
+  h2{font-size:1.02rem;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  label{display:block;font-weight:600;font-size:.92rem;margin:14px 0 6px}
+  section>label:first-child{margin-top:0}
+  textarea,select{width:100%;padding:12px;font-size:1rem;font-family:inherit;color:var(--ink);
+    background:var(--bg);border:1px solid var(--line);border-radius:8px}
+  textarea{min-height:170px;resize:vertical}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row>*{flex:1 1 170px}
+  button{font:inherit;padding:12px 16px;border-radius:8px;border:1px solid var(--line);
+         background:var(--panel);color:var(--ink);cursor:pointer;min-height:44px}
+  button:active{transform:translateY(1px)}
+  button.primary{border-color:var(--accent);color:var(--accent);font-weight:700}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .btns button{flex:1 1 140px}
+  #qrbox{display:flex;justify-content:center;padding:18px;background:#fff;border-radius:8px}
+  #qrbox canvas{image-rendering:pixelated;max-width:100%;height:auto}
+  pre{white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--line);
+      border-radius:8px;padding:12px;font-size:.86rem;margin:0;
+      font-family:ui-monospace,Menlo,Consolas,"Noto Sans Mono",monospace}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .badge{font-size:.82rem;padding:5px 10px;border-radius:999px;background:var(--bg);
+         border:1px solid var(--line);color:var(--sub)}
+  .badge b{color:var(--ink)}
+  .alert{border-radius:8px;padding:12px;font-size:.9rem;margin-top:12px}
+  .alert.warn{background:color-mix(in srgb,var(--warn) 14%,transparent);
+              border:1px solid var(--warn);color:var(--warn)}
+  .alert.ok{background:color-mix(in srgb,var(--ok) 12%,transparent);
+            border:1px solid var(--ok);color:var(--ok)}
+  .hint{color:var(--sub);font-size:.84rem;margin:6px 0 0}
+  .foot{color:var(--sub);font-size:.8rem;text-align:center;margin-top:26px}
+  /* 全画面表示（スキャナに読ませるとき） */
+  #full{position:fixed;inset:0;background:#fff;display:none;z-index:99;
+        flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:12px}
+  #full.on{display:flex}
+  #full canvas{image-rendering:pixelated;max-width:100%;max-height:82vh;height:auto}
+  #full .tip{color:#555;font-size:.82rem;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>貼り付け → Shift-JIS QR</h1>
+<p class="lead">
+  テキストを貼り付けると Shift-JIS(cp932) の QR コードになります。
+  通信しません。入力内容は端末の外に出ず、どこにも保存されません。
+</p>
+
+<section>
+  <label for="src">テキスト</label>
+  <textarea id="src" placeholder="ここに貼り付け（長押し →「貼り付け」）"></textarea>
+  <div class="btns">
+    <button type="button" id="btnPaste" class="primary">クリップボードから貼り付け</button>
+    <button type="button" id="btnClear">消去</button>
+  </div>
+  <p class="hint" id="pasteHint">
+    ボタンが効かない場合は、テキスト欄を長押しして端末の「貼り付け」を使ってください。
+  </p>
+</section>
+
+<section>
+  <h2>設定</h2>
+  <div class="row">
+    <div>
+      <label for="nl">改行の扱い</label>
+      <select id="nl">
+        <option value="bar" selected>| に置き換える（推奨）</option>
+        <option value="sp">半角空白に置き換える</option>
+        <option value="keep">そのまま（★実機で消えます）</option>
+      </select>
+    </div>
+    <div>
+      <label for="ec">誤り訂正</label>
+      <select id="ec">
+        <option value="L">L（容量最大）</option>
+        <option value="M" selected>M（標準）</option>
+        <option value="Q">Q（頑丈）</option>
+        <option value="H">H（最も頑丈）</option>
+      </select>
+    </div>
+    <div>
+      <label for="scale">QRの大きさ <span id="scaleVal"></span></label>
+      <input type="range" id="scale" min="2" max="14" value="6" style="width:100%">
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>QRコード</h2>
+  <div id="qrbox"></div>
+  <div class="meta" id="meta"></div>
+  <div id="alerts"></div>
+  <div class="btns">
+    <button type="button" id="btnFull" class="primary">全画面で表示（読ませる）</button>
+  </div>
+
+  <label>スキャナが送る文字列</label>
+  <pre id="out"></pre>
+</section>
+
+<p class="foot">
+  このページは通信しません。<br>
+  QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
+  版: <b>2026-08-01 c51df42</b>
+</p>
+
+</div>
+
+<div id="full">
+  <div id="fullbox"></div>
+  <div class="tip">画面を明るくしてください／タップで戻る</div>
+</div>
+
+<script>
+// 自動生成 (gen_tables.py)。手で編集しない。
+// cp932 対応表: [開始index, 連続する文字列] の配列。
+// index = leadIdx*188 + trailIdx,  lead=0x81..0x9F,0xE0..0xFC / trail=0x40..0x7E,0x80..0xFC
+const SJIS_RUNS = [[0, "　、。，．・：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥‘’“”（）〔〕［］｛｝〈〉《》「」『』【】＋－±×÷＝≠＜＞≦≧∞∴♂♀°′″℃￥＄￠￡％＃＆＊＠§☆★○●◎◇◆□■△▲▽▼※〒→←↑↓〓"], [119, "∈∋⊆⊇⊂⊃∪∩"], [135, "∧∨￢⇒⇔∀∃"], [153, "∠⊥⌒∂∇≡≒≪≫√∽∝∵∫∬"], [175, "Å‰♯♭♪†‡¶"], [187, "◯"], [203, "０１２３４５６７８９"], [220, "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"], [252, "ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"], [282, "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをん"], [376, "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶ"], [470, "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"], [502, "αβγδεζηθικλμνξοπρστυφχψω"], [564, "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"], [612, "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"], [658, "─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂"], [1128, "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ"], [1159, "㍉㌔㌢㍍㌘㌧㌃㌶㍑㍗㌍㌦㌣㌫㍊㌻㎜㎝㎞㎎㎏㏄㎡"], [1190, "㍻〝〟№㏍℡㊤㊥㊦㊧㊨㈱㈲㈹㍾㍽㍼"], [1210, "∮∑"], [1215, "∟⊿"], [1410, "亜唖娃阿哀愛挨姶逢葵茜穐悪握渥旭葦芦鯵梓圧斡扱宛姐虻飴絢綾鮎或粟袷安庵按暗案闇鞍杏以伊位依偉囲夷委威尉惟意慰易椅為畏異移維緯胃萎衣謂違遺医井亥域育郁磯一壱溢逸稲茨芋鰯允印咽員因姻引飲淫胤蔭院陰隠韻吋右宇烏羽迂雨卯鵜窺丑碓臼渦嘘唄欝蔚鰻姥厩浦瓜閏噂云運雲荏餌叡営嬰影映曳栄永泳洩瑛盈穎頴英衛詠鋭液疫益駅悦謁越閲榎厭円園堰奄宴延怨掩援沿演炎焔煙燕猿縁艶苑薗遠鉛鴛塩於汚甥凹央奥往応押旺横欧殴王翁襖鴬鴎黄岡沖荻億屋憶臆桶牡乙俺卸恩温穏音下化仮何伽価佳加可嘉夏嫁家寡科暇果架歌河火珂禍禾稼箇花苛茄荷華菓蝦課嘩貨迦過霞蚊俄峨我牙画臥芽蛾賀雅餓駕介会解回塊壊廻快怪悔恢懐戒拐改魁晦械海灰界皆絵芥蟹開階貝凱劾外咳害崖慨概涯碍蓋街該鎧骸浬馨蛙垣柿蛎鈎劃嚇各廓拡撹格核殻獲確穫覚角赫較郭閣隔革学岳楽額顎掛笠樫橿梶鰍潟割喝恰括活渇滑葛褐轄且鰹叶椛樺鞄株兜竃蒲釜鎌噛鴨栢茅萱粥刈苅瓦乾侃冠寒刊勘勧巻喚堪姦完官寛干幹患感慣憾換敢柑桓棺款歓汗漢澗潅環甘監看竿管簡緩缶翰肝艦莞観諌貫還鑑間閑関陥韓館舘丸含岸巌玩癌眼岩翫贋雁頑顔願企伎危喜器基奇嬉寄岐希幾忌揮机旗既期棋棄機帰毅気汽畿祈季稀紀徽規記貴起軌輝飢騎鬼亀偽儀妓宜戯技擬欺犠疑祇義蟻誼議掬菊鞠吉吃喫桔橘詰砧杵黍却客脚虐逆丘久仇休及吸宮弓急救朽求汲泣灸球究窮笈級糾給旧牛去居巨拒拠挙渠虚許距鋸漁禦魚亨享京供侠僑兇競共凶協匡卿叫喬境峡強彊怯恐恭挟教橋況狂狭矯胸脅興蕎郷鏡響饗驚仰凝尭暁業局曲極玉桐粁僅勤均巾錦斤欣欽琴禁禽筋緊芹菌衿襟謹近金吟銀九倶句区狗玖矩苦躯駆駈駒具愚虞喰空偶寓遇隅串櫛釧屑屈掘窟沓靴轡窪熊隈粂栗繰桑鍬勲君薫訓群軍郡卦袈祁係傾刑兄啓圭珪型契形径恵慶慧憩掲携敬景桂渓畦稽系経継繋罫茎荊蛍計詣警軽頚鶏芸迎鯨劇戟撃激隙桁傑欠決潔穴結血訣月件倹倦健兼券剣喧圏堅嫌建憲懸拳捲検権牽犬献研硯絹県肩見謙賢軒遣鍵険顕験鹸元原厳幻弦減源玄現絃舷言諺限乎個古呼固姑孤己庫弧戸故枯湖狐糊袴股胡菰虎誇跨鈷雇顧鼓五互伍午呉吾娯後御悟梧檎瑚碁語誤護醐乞鯉交佼侯候倖光公功効勾厚口向后喉坑垢好孔孝宏工巧巷幸広庚康弘恒慌抗拘控攻昂晃更杭校梗構江洪浩港溝甲皇硬稿糠紅紘絞綱耕考肯肱腔膏航荒行衡講貢購郊酵鉱砿鋼閤降項香高鴻剛劫号合壕拷濠豪轟麹克刻告国穀酷鵠黒獄漉腰甑忽惚骨狛込此頃今困坤墾婚恨懇昏昆根梱混痕紺艮魂些佐叉唆嵯左差査沙瑳砂詐鎖裟坐座挫債催再最哉塞妻宰彩才採栽歳済災采犀砕砦祭斎細菜裁載際剤在材罪財冴坂阪堺榊肴咲崎埼碕鷺作削咋搾昨朔柵窄策索錯桜鮭笹匙冊刷察拶撮擦札殺薩雑皐鯖捌錆鮫皿晒三傘参山惨撒散桟燦珊産算纂蚕讃賛酸餐斬暫残仕仔伺使刺司史嗣四士始姉姿子屍市師志思指支孜斯施旨枝止死氏獅祉私糸紙紫肢脂至視詞詩試誌諮資賜雌飼歯事似侍児字寺慈持時次滋治爾璽痔磁示而耳自蒔辞汐鹿式識鴫竺軸宍雫七叱執失嫉室悉湿漆疾質実蔀篠偲柴芝屡蕊縞舎写射捨赦斜煮社紗者謝車遮蛇邪借勺尺杓灼爵酌釈錫若寂弱惹主取守手朱殊狩珠種腫趣酒首儒受呪寿授樹綬需囚収周宗就州修愁拾洲秀秋終繍習臭舟蒐衆襲讐蹴輯週酋酬集醜什住充十従戎柔汁渋獣縦重銃叔夙宿淑祝縮粛塾熟出術述俊峻春瞬竣舜駿准循旬楯殉淳準潤盾純巡遵醇順処初所暑曙渚庶緒署書薯藷諸助叙女序徐恕鋤除傷償勝匠升召哨商唱嘗奨妾娼宵将小少尚庄床廠彰承抄招掌捷昇昌昭晶松梢樟樵沼消渉湘焼焦照症省硝礁祥称章笑粧紹肖菖蒋蕉衝裳訟証詔詳象賞醤鉦鍾鐘障鞘上丈丞乗冗剰城場壌嬢常情擾条杖浄状畳穣蒸譲醸錠嘱埴飾拭植殖燭織職色触食蝕辱尻伸信侵唇娠寝審心慎振新晋森榛浸深申疹真神秦紳臣芯薪親診身辛進針震人仁刃塵壬尋甚尽腎訊迅陣靭笥諏須酢図厨逗吹垂帥推水炊睡粋翠衰遂酔錐錘随瑞髄崇嵩数枢趨雛据杉椙菅頗雀裾澄摺寸世瀬畝是凄制勢姓征性成政整星晴棲栖正清牲生盛精聖声製西誠誓請逝醒青静斉税脆隻席惜戚斥昔析石積籍績脊責赤跡蹟碩切拙接摂折設窃節説雪絶舌蝉仙先千占宣専尖川戦扇撰栓栴泉浅洗染潜煎煽旋穿箭線繊羨腺舛船薦詮賎践選遷銭銑閃鮮前善漸然全禅繕膳糎噌塑岨措曾曽楚狙疏疎礎祖租粗素組蘇訴阻遡鼠僧創双叢倉喪壮奏爽宋層匝惣想捜掃挿掻操早曹巣槍槽漕燥争痩相窓糟総綜聡草荘葬蒼藻装走送遭鎗霜騒像増憎臓蔵贈造促側則即息捉束測足速俗属賊族続卒袖其揃存孫尊損村遜他多太汰詑唾堕妥惰打柁舵楕陀駄騨体堆対耐岱帯待怠態戴替泰滞胎腿苔袋貸退逮隊黛鯛代台大第醍題鷹滝瀧卓啄宅托択拓沢濯琢託鐸濁諾茸凧蛸只叩但達辰奪脱巽竪辿棚谷狸鱈樽誰丹単嘆坦担探旦歎淡湛炭短端箪綻耽胆蛋誕鍛団壇弾断暖檀段男談値知地弛恥智池痴稚置致蜘遅馳築畜竹筑蓄逐秩窒茶嫡着中仲宙忠抽昼柱注虫衷註酎鋳駐樗瀦猪苧著貯丁兆凋喋寵帖帳庁弔張彫徴懲挑暢朝潮牒町眺聴脹腸蝶調諜超跳銚長頂鳥勅捗直朕沈珍賃鎮陳津墜椎槌追鎚痛通塚栂掴槻佃漬柘辻蔦綴鍔椿潰坪壷嬬紬爪吊釣鶴亭低停偵剃貞呈堤定帝底庭廷弟悌抵挺提梯汀碇禎程締艇訂諦蹄逓邸鄭釘鼎泥摘擢敵滴的笛適鏑溺哲徹撤轍迭鉄典填天展店添纏甜貼転顛点伝殿澱田電兎吐堵塗妬屠徒斗杜渡登菟賭途都鍍砥砺努度土奴怒倒党冬凍刀唐塔塘套宕島嶋悼投搭東桃梼棟盗淘湯涛灯燈当痘祷等答筒糖統到董蕩藤討謄豆踏逃透鐙陶頭騰闘働動同堂導憧撞洞瞳童胴萄道銅峠鴇匿得徳涜特督禿篤毒独読栃橡凸突椴届鳶苫寅酉瀞噸屯惇敦沌豚遁頓呑曇鈍奈那内乍凪薙謎灘捺鍋楢馴縄畷南楠軟難汝二尼弐迩匂賑肉虹廿日乳入如尿韮任妊忍認濡禰祢寧葱猫熱年念捻撚燃粘乃廼之埜嚢悩濃納能脳膿農覗蚤巴把播覇杷波派琶破婆罵芭馬俳廃拝排敗杯盃牌背肺輩配倍培媒梅楳煤狽買売賠陪這蝿秤矧萩伯剥博拍柏泊白箔粕舶薄迫曝漠爆縛莫駁麦函箱硲箸肇筈櫨幡肌畑畠八鉢溌発醗髪伐罰抜筏閥鳩噺塙蛤隼伴判半反叛帆搬斑板氾汎版犯班畔繁般藩販範釆煩頒飯挽晩番盤磐蕃蛮匪卑否妃庇彼悲扉批披斐比泌疲皮碑秘緋罷肥被誹費避非飛樋簸備尾微枇毘琵眉美鼻柊稗匹疋髭彦膝菱肘弼必畢筆逼桧姫媛紐百謬俵彪標氷漂瓢票表評豹廟描病秒苗錨鋲蒜蛭鰭品彬斌浜瀕貧賓頻敏瓶不付埠夫婦富冨布府怖扶敷斧普浮父符腐膚芙譜負賦赴阜附侮撫武舞葡蕪部封楓風葺蕗伏副復幅服福腹複覆淵弗払沸仏物鮒分吻噴墳憤扮焚奮粉糞紛雰文聞丙併兵塀幣平弊柄並蔽閉陛米頁僻壁癖碧別瞥蔑箆偏変片篇編辺返遍便勉娩弁鞭保舗鋪圃捕歩甫補輔穂募墓慕戊暮母簿菩倣俸包呆報奉宝峰峯崩庖抱捧放方朋法泡烹砲縫胞芳萌蓬蜂褒訪豊邦鋒飽鳳鵬乏亡傍剖坊妨帽忘忙房暴望某棒冒紡肪膨謀貌貿鉾防吠頬北僕卜墨撲朴牧睦穆釦勃没殆堀幌奔本翻凡盆摩磨魔麻埋妹昧枚毎哩槙幕膜枕鮪柾鱒桝亦俣又抹末沫迄侭繭麿万慢満漫蔓味未魅巳箕岬密蜜湊蓑稔脈妙粍民眠務夢無牟矛霧鵡椋婿娘冥名命明盟迷銘鳴姪牝滅免棉綿緬面麺摸模茂妄孟毛猛盲網耗蒙儲木黙目杢勿餅尤戻籾貰問悶紋門匁也冶夜爺耶野弥矢厄役約薬訳躍靖柳薮鑓愉愈油癒諭輸唯佑優勇友宥幽悠憂揖有柚湧涌猶猷由祐裕誘遊邑郵雄融夕予余与誉輿預傭幼妖容庸揚揺擁曜楊様洋溶熔用窯羊耀葉蓉要謡踊遥陽養慾抑欲沃浴翌翼淀羅螺裸来莱頼雷洛絡落酪乱卵嵐欄濫藍蘭覧利吏履李梨理璃痢裏裡里離陸律率立葎掠略劉流溜琉留硫粒隆竜龍侶慮旅虜了亮僚両凌寮料梁涼猟療瞭稜糧良諒遼量陵領力緑倫厘林淋燐琳臨輪隣鱗麟瑠塁涙累類令伶例冷励嶺怜玲礼苓鈴隷零霊麗齢暦歴列劣烈裂廉恋憐漣煉簾練聯蓮連錬呂魯櫓炉賂路露労婁廊弄朗楼榔浪漏牢狼篭老聾蝋郎六麓禄肋録論倭和話歪賄脇惑枠鷲亙亘鰐詫藁蕨椀湾碗腕"], [4418, "弌丐丕个丱丶丼丿乂乖乘亂亅豫亊舒弍于亞亟亠亢亰亳亶从仍仄仆仂仗仞仭仟价伉佚估佛佝佗佇佶侈侏侘佻佩佰侑佯來侖儘俔俟俎俘俛俑俚俐俤俥倚倨倔倪倥倅伜俶倡倩倬俾俯們倆偃假會偕偐偈做偖偬偸傀傚傅傴傲僉僊傳僂僖僞僥僭僣僮價僵儉儁儂儖儕儔儚儡儺儷儼儻儿兀兒兌兔兢竸兩兪兮冀冂囘册冉冏冑冓冕冖冤冦冢冩冪冫决冱冲冰况冽凅凉凛几處凩凭凰凵凾刄刋刔刎刧刪刮刳刹剏剄剋剌剞剔剪剴剩剳剿剽劍劔劒剱劈劑辨辧劬劭劼劵勁勍勗勞勣勦飭勠勳勵勸勹匆匈甸匍匐匏匕匚匣匯匱匳匸區卆卅丗卉卍凖卞卩卮夘卻卷厂厖厠厦厥厮厰厶參簒雙叟曼燮叮叨叭叺吁吽呀听吭吼吮吶吩吝呎咏呵咎呟呱呷呰咒呻咀呶咄咐咆哇咢咸咥咬哄哈咨咫哂咤咾咼哘哥哦唏唔哽哮哭哺哢唹啀啣啌售啜啅啖啗唸唳啝喙喀咯喊喟啻啾喘喞單啼喃喩喇喨嗚嗅嗟嗄嗜嗤嗔嘔嗷嘖嗾嗽嘛嗹噎噐營嘴嘶嘲嘸噫噤嘯噬噪嚆嚀嚊嚠嚔嚏嚥嚮嚶嚴囂嚼囁囃囀囈囎囑囓囗囮囹圀囿圄圉圈國圍圓團圖嗇圜圦圷圸坎圻址坏坩埀垈坡坿垉垓垠垳垤垪垰埃埆埔埒埓堊埖埣堋堙堝塲堡塢塋塰毀塒堽塹墅墹墟墫墺壞墻墸墮壅壓壑壗壙壘壥壜壤壟壯壺壹壻壼壽夂夊夐夛梦夥夬夭夲夸夾竒奕奐奎奚奘奢奠奧奬奩奸妁妝佞侫妣妲姆姨姜妍姙姚娥娟娑娜娉娚婀婬婉娵娶婢婪媚媼媾嫋嫂媽嫣嫗嫦嫩嫖嫺嫻嬌嬋嬖嬲嫐嬪嬶嬾孃孅孀孑孕孚孛孥孩孰孳孵學斈孺宀它宦宸寃寇寉寔寐寤實寢寞寥寫寰寶寳尅將專對尓尠尢尨尸尹屁屆屎屓屐屏孱屬屮乢屶屹岌岑岔妛岫岻岶岼岷峅岾峇峙峩峽峺峭嶌峪崋崕崗嵜崟崛崑崔崢崚崙崘嵌嵒嵎嵋嵬嵳嵶嶇嶄嶂嶢嶝嶬嶮嶽嶐嶷嶼巉巍巓巒巖巛巫已巵帋帚帙帑帛帶帷幄幃幀幎幗幔幟幢幤幇幵并幺麼广庠廁廂廈廐廏廖廣廝廚廛廢廡廨廩廬廱廳廰廴廸廾弃弉彝彜弋弑弖弩弭弸彁彈彌彎弯彑彖彗彙彡彭彳彷徃徂彿徊很徑徇從徙徘徠徨徭徼忖忻忤忸忱忝悳忿怡恠怙怐怩怎怱怛怕怫怦怏怺恚恁恪恷恟恊恆恍恣恃恤恂恬恫恙悁悍惧悃悚悄悛悖悗悒悧悋惡悸惠惓悴忰悽惆悵惘慍愕愆惶惷愀惴惺愃愡惻惱愍愎慇愾愨愧慊愿愼愬愴愽慂慄慳慷慘慙慚慫慴慯慥慱慟慝慓慵憙憖憇憬憔憚憊憑憫憮懌懊應懷懈懃懆憺懋罹懍懦懣懶懺懴懿懽懼懾戀戈戉戍戌戔戛戞戡截戮戰戲戳扁扎扞扣扛扠扨扼抂抉找抒抓抖拔抃抔拗拑抻拏拿拆擔拈拜拌拊拂拇抛拉挌拮拱挧挂挈拯拵捐挾捍搜捏掖掎掀掫捶掣掏掉掟掵捫捩掾揩揀揆揣揉插揶揄搖搴搆搓搦搶攝搗搨搏摧摯摶摎攪撕撓撥撩撈撼據擒擅擇撻擘擂擱擧舉擠擡抬擣擯攬擶擴擲擺攀擽攘攜攅攤攣攫攴攵攷收攸畋效敖敕敍敘敞敝敲數斂斃變斛斟斫斷旃旆旁旄旌旒旛旙无旡旱杲昊昃旻杳昵昶昴昜晏晄晉晁晞晝晤晧晨晟晢晰暃暈暎暉暄暘暝曁暹曉暾暼曄暸曖曚曠昿曦曩曰曵曷朏朖朞朦朧霸朮朿朶杁朸朷杆杞杠杙杣杤枉杰枩杼杪枌枋枦枡枅枷柯枴柬枳柩枸柤柞柝柢柮枹柎柆柧檜栞框栩桀桍栲桎梳栫桙档桷桿梟梏梭梔條梛梃檮梹桴梵梠梺椏梍桾椁棊椈棘椢椦棡椌棍棔棧棕椶椒椄棗棣椥棹棠棯椨椪椚椣椡棆楹楷楜楸楫楔楾楮椹楴椽楙椰楡楞楝榁楪榲榮槐榿槁槓榾槎寨槊槝榻槃榧樮榑榠榜榕榴槞槨樂樛槿權槹槲槧樅榱樞槭樔槫樊樒櫁樣樓橄樌橲樶橸橇橢橙橦橈樸樢檐檍檠檄檢檣檗蘗檻櫃櫂檸檳檬櫞櫑櫟檪櫚櫪櫻欅蘖櫺欒欖鬱欟欸欷盜欹飮歇歃歉歐歙歔歛歟歡歸歹歿殀殄殃殍殘殕殞殤殪殫殯殲殱殳殷殼毆毋毓毟毬毫毳毯麾氈氓气氛氤氣汞汕汢汪沂沍沚沁沛汾汨汳沒沐泄泱泓沽泗泅泝沮沱沾沺泛泯泙泪洟衍洶洫洽洸洙洵洳洒洌浣涓浤浚浹浙涎涕濤涅淹渕渊涵淇淦涸淆淬淞淌淨淒淅淺淙淤淕淪淮渭湮渮渙湲湟渾渣湫渫湶湍渟湃渺湎渤滿渝游溂溪溘滉溷滓溽溯滄溲滔滕溏溥滂溟潁漑灌滬滸滾漿滲漱滯漲滌漾漓滷澆潺潸澁澀潯潛濳潭澂潼潘澎澑濂潦澳澣澡澤澹濆澪濟濕濬濔濘濱濮濛瀉瀋濺瀑瀁瀏濾瀛瀚潴瀝瀘瀟瀰瀾瀲灑灣炙炒炯烱炬炸炳炮烟烋烝烙焉烽焜焙煥煕熈煦煢煌煖煬熏燻熄熕熨熬燗熹熾燒燉燔燎燠燬燧燵燼燹燿爍爐爛爨爭爬爰爲爻爼爿牀牆牋牘牴牾犂犁犇犒犖犢犧犹犲狃狆狄狎狒狢狠狡狹狷倏猗猊猜猖猝猴猯猩猥猾獎獏默獗獪獨獰獸獵獻獺珈玳珎玻珀珥珮珞璢琅瑯琥珸琲琺瑕琿瑟瑙瑁瑜瑩瑰瑣瑪瑶瑾璋璞璧瓊瓏瓔珱瓠瓣瓧瓩瓮瓲瓰瓱瓸瓷甄甃甅甌甎甍甕甓甞甦甬甼畄畍畊畉畛畆畚畩畤畧畫畭畸當疆疇畴疊疉疂疔疚疝疥疣痂疳痃疵疽疸疼疱痍痊痒痙痣痞痾痿痼瘁痰痺痲痳瘋瘍瘉瘟瘧瘠瘡瘢瘤瘴瘰瘻癇癈癆癜癘癡癢癨癩癪癧癬癰癲癶癸發皀皃皈皋皎皖皓皙皚皰皴皸皹皺盂盍盖盒盞盡盥盧盪蘯盻眈眇眄眩眤眞眥眦眛眷眸睇睚睨睫睛睥睿睾睹瞎瞋瞑瞠瞞瞰瞶瞹瞿瞼瞽瞻矇矍矗矚矜矣矮矼砌砒礦砠礪硅碎硴碆硼碚碌碣碵碪碯磑磆磋磔碾碼磅磊磬磧磚磽磴礇礒礑礙礬礫祀祠祗祟祚祕祓祺祿禊禝禧齋禪禮禳禹禺秉秕秧秬秡秣稈稍稘稙稠稟禀稱稻稾稷穃穗穉穡穢穩龝穰穹穽窈窗窕窘窖窩竈窰窶竅竄窿邃竇竊竍竏竕竓站竚竝竡竢竦竭竰笂笏笊笆笳笘笙笞笵笨笶筐筺笄筍笋筌筅筵筥筴筧筰筱筬筮箝箘箟箍箜箚箋箒箏筝箙篋篁篌篏箴篆篝篩簑簔篦篥籠簀簇簓篳篷簗簍篶簣簧簪簟簷簫簽籌籃籔籏籀籐籘籟籤籖籥籬籵粃粐粤粭粢粫粡粨粳粲粱粮粹粽糀糅糂糘糒糜糢鬻糯糲糴糶糺紆紂紜紕紊絅絋紮紲紿紵絆絳絖絎絲絨絮絏絣經綉絛綏絽綛綺綮綣綵緇綽綫總綢綯緜綸綟綰緘緝緤緞緻緲緡縅縊縣縡縒縱縟縉縋縢繆繦縻縵縹繃縷縲縺繧繝繖繞繙繚繹繪繩繼繻纃緕繽辮繿纈纉續纒纐纓纔纖纎纛纜缸缺罅罌罍罎罐网罕罔罘罟罠罨罩罧罸羂羆羃羈羇羌羔羞羝羚羣羯羲羹羮羶羸譱翅翆翊翕翔翡翦翩翳翹飜耆耄耋耒耘耙耜耡耨耿耻聊聆聒聘聚聟聢聨聳聲聰聶聹聽聿肄肆肅肛肓肚肭冐肬胛胥胙胝胄胚胖脉胯胱脛脩脣脯腋隋腆脾腓腑胼腱腮腥腦腴膃膈膊膀膂膠膕膤膣腟膓膩膰膵膾膸膽臀臂膺臉臍臑臙臘臈臚臟臠臧臺臻臾舁舂舅與舊舍舐舖舩舫舸舳艀艙艘艝艚艟艤艢艨艪艫舮艱艷艸艾芍芒芫芟芻芬苡苣苟苒苴苳苺莓范苻苹苞茆苜茉苙茵茴茖茲茱荀茹荐荅茯茫茗茘莅莚莪莟莢莖茣莎莇莊荼莵荳荵莠莉莨菴萓菫菎菽萃菘萋菁菷萇菠菲萍萢萠莽萸蔆菻葭萪萼蕚蒄葷葫蒭葮蒂葩葆萬葯葹萵蓊葢蒹蒿蒟蓙蓍蒻蓚蓐蓁蓆蓖蒡蔡蓿蓴蔗蔘蔬蔟蔕蔔蓼蕀蕣蕘蕈蕁蘂蕋蕕薀薤薈薑薊薨蕭薔薛藪薇薜蕷蕾薐藉薺藏薹藐藕藝藥藜藹蘊蘓蘋藾藺蘆蘢蘚蘰蘿虍乕虔號虧虱蚓蚣蚩蚪蚋蚌蚶蚯蛄蛆蚰蛉蠣蚫蛔蛞蛩蛬蛟蛛蛯蜒蜆蜈蜀蜃蛻蜑蜉蜍蛹蜊蜴蜿蜷蜻蜥蜩蜚蝠蝟蝸蝌蝎蝴蝗蝨蝮蝙蝓蝣蝪蠅螢螟螂螯蟋螽蟀蟐雖螫蟄螳蟇蟆螻蟯蟲蟠蠏蠍蟾蟶蟷蠎蟒蠑蠖蠕蠢蠡蠱蠶蠹蠧蠻衄衂衒衙衞衢衫袁衾袞衵衽袵衲袂袗袒袮袙袢袍袤袰袿袱裃裄裔裘裙裝裹褂裼裴裨裲褄褌褊褓襃褞褥褪褫襁襄褻褶褸襌褝襠襞襦襤襭襪襯襴襷襾覃覈覊覓覘覡覩覦覬覯覲覺覽覿觀觚觜觝觧觴觸訃訖訐訌訛訝訥訶詁詛詒詆詈詼詭詬詢誅誂誄誨誡誑誥誦誚誣諄諍諂諚諫諳諧諤諱謔諠諢諷諞諛謌謇謚諡謖謐謗謠謳鞫謦謫謾謨譁譌譏譎證譖譛譚譫譟譬譯譴譽讀讌讎讒讓讖讙讚谺豁谿豈豌豎豐豕豢豬豸豺貂貉貅貊貍貎貔豼貘戝貭貪貽貲貳貮貶賈賁賤賣賚賽賺賻贄贅贊贇贏贍贐齎贓賍贔贖赧赭赱赳趁趙跂趾趺跏跚跖跌跛跋跪跫跟跣跼踈踉跿踝踞踐踟蹂踵踰踴蹊蹇蹉蹌蹐蹈蹙蹤蹠踪蹣蹕蹶蹲蹼躁躇躅躄躋躊躓躑躔躙躪躡躬躰軆躱躾軅軈軋軛軣軼軻軫軾輊輅輕輒輙輓輜輟輛輌輦輳輻輹轅轂輾轌轉轆轎轗轜轢轣轤辜辟辣辭辯辷迚迥迢迪迯邇迴逅迹迺逑逕逡逍逞逖逋逧逶逵逹迸遏遐遑遒逎遉逾遖遘遞遨遯遶隨遲邂遽邁邀邊邉邏邨邯邱邵郢郤扈郛鄂鄒鄙鄲鄰酊酖酘酣酥酩酳酲醋醉醂醢醫醯醪醵醴醺釀釁釉釋釐釖釟釡釛釼釵釶鈞釿鈔鈬鈕鈑鉞鉗鉅鉉鉤鉈銕鈿鉋鉐銜銖銓銛鉚鋏銹銷鋩錏鋺鍄錮錙錢錚錣錺錵錻鍜鍠鍼鍮鍖鎰鎬鎭鎔鎹鏖鏗鏨鏥鏘鏃鏝鏐鏈鏤鐚鐔鐓鐃鐇鐐鐶鐫鐵鐡鐺鑁鑒鑄鑛鑠鑢鑞鑪鈩鑰鑵鑷鑽鑚鑼鑾钁鑿閂閇閊閔閖閘閙閠閨閧閭閼閻閹閾闊濶闃闍闌闕闔闖關闡闥闢阡阨阮阯陂陌陏陋陷陜陞陝陟陦陲陬隍隘隕隗險隧隱隲隰隴隶隸隹雎雋雉雍襍雜霍雕雹霄霆霈霓霎霑霏霖霙霤霪霰霹霽霾靄靆靈靂靉靜靠靤靦靨勒靫靱靹鞅靼鞁靺鞆鞋鞏鞐鞜鞨鞦鞣鞳鞴韃韆韈韋韜韭齏韲竟韶韵頏頌頸頤頡頷頽顆顏顋顫顯顰顱顴顳颪颯颱颶飄飃飆飩飫餃餉餒餔餘餡餝餞餤餠餬餮餽餾饂饉饅饐饋饑饒饌饕馗馘馥馭馮馼駟駛駝駘駑駭駮駱駲駻駸騁騏騅駢騙騫騷驅驂驀驃騾驕驍驛驗驟驢驥驤驩驫驪骭骰骼髀髏髑髓體髞髟髢髣髦髯髫髮髴髱髷髻鬆鬘鬚鬟鬢鬣鬥鬧鬨鬩鬪鬮鬯鬲魄魃魏魍魎魑魘魴鮓鮃鮑鮖鮗鮟鮠鮨鮴鯀鯊鮹鯆鯏鯑鯒鯣鯢鯤鯔鯡鰺鯲鯱鯰鰕鰔鰉鰓鰌鰆鰈鰒鰊鰄鰮鰛鰥鰤鰡鰰鱇鰲鱆鰾鱚鱠鱧鱶鱸鳧鳬鳰鴉鴈鳫鴃鴆鴪鴦鶯鴣鴟鵄鴕鴒鵁鴿鴾鵆鵈鵝鵞鵤鵑鵐鵙鵲鶉鶇鶫鵯鵺鶚鶤鶩鶲鷄鷁鶻鶸鶺鷆鷏鷂鷙鷓鷸鷦鷭鷯鷽鸚鸛鸞鹵鹹鹽麁麈麋麌麒麕麑麝麥麩麸麪麭靡黌黎黏黐黔黜點黝黠黥黨黯黴黶黷黹黻黼黽鼇鼈皷鼕鼡鼬鼾齊齒齔齣齟齠齡齦齧齬齪齷齲齶龕龜龠堯槇遙瑤凜熙"], [8272, "纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑"], [8634, "ⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹ"], [8645, "￤＇＂"], [8836, ""]];
+// 正準表に無いがcp932でエンコード可能な文字(波ダッシュ U+301C 等・NEC/IBM重複面)
+const SJIS_ALIAS = {"¢": [129, 145], "£": [129, 146], "¬": [129, 202], "‖": [129, 97], "−": [129, 124], "〜": [129, 96]};
+const SJIS_SUBS = {"¥": "\\", "–": "-", "—": "―", "•": "・"};
+// python-qrcode の RS_BLOCK_TABLE より。[version-1][ecIdx(L,M,Q,H)] -> [[block数, 総符号語, データ符号語], ...]
+const RS_BLOCKS = [[[[1, 26, 19]], [[1, 26, 16]], [[1, 26, 13]], [[1, 26, 9]]], [[[1, 44, 34]], [[1, 44, 28]], [[1, 44, 22]], [[1, 44, 16]]], [[[1, 70, 55]], [[1, 70, 44]], [[2, 35, 17]], [[2, 35, 13]]], [[[1, 100, 80]], [[2, 50, 32]], [[2, 50, 24]], [[4, 25, 9]]], [[[1, 134, 108]], [[2, 67, 43]], [[2, 33, 15], [2, 34, 16]], [[2, 33, 11], [2, 34, 12]]], [[[2, 86, 68]], [[4, 43, 27]], [[4, 43, 19]], [[4, 43, 15]]], [[[2, 98, 78]], [[4, 49, 31]], [[2, 32, 14], [4, 33, 15]], [[4, 39, 13], [1, 40, 14]]], [[[2, 121, 97]], [[2, 60, 38], [2, 61, 39]], [[4, 40, 18], [2, 41, 19]], [[4, 40, 14], [2, 41, 15]]], [[[2, 146, 116]], [[3, 58, 36], [2, 59, 37]], [[4, 36, 16], [4, 37, 17]], [[4, 36, 12], [4, 37, 13]]], [[[2, 86, 68], [2, 87, 69]], [[4, 69, 43], [1, 70, 44]], [[6, 43, 19], [2, 44, 20]], [[6, 43, 15], [2, 44, 16]]], [[[4, 101, 81]], [[1, 80, 50], [4, 81, 51]], [[4, 50, 22], [4, 51, 23]], [[3, 36, 12], [8, 37, 13]]], [[[2, 116, 92], [2, 117, 93]], [[6, 58, 36], [2, 59, 37]], [[4, 46, 20], [6, 47, 21]], [[7, 42, 14], [4, 43, 15]]], [[[4, 133, 107]], [[8, 59, 37], [1, 60, 38]], [[8, 44, 20], [4, 45, 21]], [[12, 33, 11], [4, 34, 12]]], [[[3, 145, 115], [1, 146, 116]], [[4, 64, 40], [5, 65, 41]], [[11, 36, 16], [5, 37, 17]], [[11, 36, 12], [5, 37, 13]]], [[[5, 109, 87], [1, 110, 88]], [[5, 65, 41], [5, 66, 42]], [[5, 54, 24], [7, 55, 25]], [[11, 36, 12], [7, 37, 13]]], [[[5, 122, 98], [1, 123, 99]], [[7, 73, 45], [3, 74, 46]], [[15, 43, 19], [2, 44, 20]], [[3, 45, 15], [13, 46, 16]]], [[[1, 135, 107], [5, 136, 108]], [[10, 74, 46], [1, 75, 47]], [[1, 50, 22], [15, 51, 23]], [[2, 42, 14], [17, 43, 15]]], [[[5, 150, 120], [1, 151, 121]], [[9, 69, 43], [4, 70, 44]], [[17, 50, 22], [1, 51, 23]], [[2, 42, 14], [19, 43, 15]]], [[[3, 141, 113], [4, 142, 114]], [[3, 70, 44], [11, 71, 45]], [[17, 47, 21], [4, 48, 22]], [[9, 39, 13], [16, 40, 14]]], [[[3, 135, 107], [5, 136, 108]], [[3, 67, 41], [13, 68, 42]], [[15, 54, 24], [5, 55, 25]], [[15, 43, 15], [10, 44, 16]]], [[[4, 144, 116], [4, 145, 117]], [[17, 68, 42]], [[17, 50, 22], [6, 51, 23]], [[19, 46, 16], [6, 47, 17]]], [[[2, 139, 111], [7, 140, 112]], [[17, 74, 46]], [[7, 54, 24], [16, 55, 25]], [[34, 37, 13]]], [[[4, 151, 121], [5, 152, 122]], [[4, 75, 47], [14, 76, 48]], [[11, 54, 24], [14, 55, 25]], [[16, 45, 15], [14, 46, 16]]], [[[6, 147, 117], [4, 148, 118]], [[6, 73, 45], [14, 74, 46]], [[11, 54, 24], [16, 55, 25]], [[30, 46, 16], [2, 47, 17]]], [[[8, 132, 106], [4, 133, 107]], [[8, 75, 47], [13, 76, 48]], [[7, 54, 24], [22, 55, 25]], [[22, 45, 15], [13, 46, 16]]], [[[10, 142, 114], [2, 143, 115]], [[19, 74, 46], [4, 75, 47]], [[28, 50, 22], [6, 51, 23]], [[33, 46, 16], [4, 47, 17]]], [[[8, 152, 122], [4, 153, 123]], [[22, 73, 45], [3, 74, 46]], [[8, 53, 23], [26, 54, 24]], [[12, 45, 15], [28, 46, 16]]], [[[3, 147, 117], [10, 148, 118]], [[3, 73, 45], [23, 74, 46]], [[4, 54, 24], [31, 55, 25]], [[11, 45, 15], [31, 46, 16]]], [[[7, 146, 116], [7, 147, 117]], [[21, 73, 45], [7, 74, 46]], [[1, 53, 23], [37, 54, 24]], [[19, 45, 15], [26, 46, 16]]], [[[5, 145, 115], [10, 146, 116]], [[19, 75, 47], [10, 76, 48]], [[15, 54, 24], [25, 55, 25]], [[23, 45, 15], [25, 46, 16]]], [[[13, 145, 115], [3, 146, 116]], [[2, 74, 46], [29, 75, 47]], [[42, 54, 24], [1, 55, 25]], [[23, 45, 15], [28, 46, 16]]], [[[17, 145, 115]], [[10, 74, 46], [23, 75, 47]], [[10, 54, 24], [35, 55, 25]], [[19, 45, 15], [35, 46, 16]]], [[[17, 145, 115], [1, 146, 116]], [[14, 74, 46], [21, 75, 47]], [[29, 54, 24], [19, 55, 25]], [[11, 45, 15], [46, 46, 16]]], [[[13, 145, 115], [6, 146, 116]], [[14, 74, 46], [23, 75, 47]], [[44, 54, 24], [7, 55, 25]], [[59, 46, 16], [1, 47, 17]]], [[[12, 151, 121], [7, 152, 122]], [[12, 75, 47], [26, 76, 48]], [[39, 54, 24], [14, 55, 25]], [[22, 45, 15], [41, 46, 16]]], [[[6, 151, 121], [14, 152, 122]], [[6, 75, 47], [34, 76, 48]], [[46, 54, 24], [10, 55, 25]], [[2, 45, 15], [64, 46, 16]]], [[[17, 152, 122], [4, 153, 123]], [[29, 74, 46], [14, 75, 47]], [[49, 54, 24], [10, 55, 25]], [[24, 45, 15], [46, 46, 16]]], [[[4, 152, 122], [18, 153, 123]], [[13, 74, 46], [32, 75, 47]], [[48, 54, 24], [14, 55, 25]], [[42, 45, 15], [32, 46, 16]]], [[[20, 147, 117], [4, 148, 118]], [[40, 75, 47], [7, 76, 48]], [[43, 54, 24], [22, 55, 25]], [[10, 45, 15], [67, 46, 16]]], [[[19, 148, 118], [6, 149, 119]], [[18, 75, 47], [31, 76, 48]], [[34, 54, 24], [34, 55, 25]], [[20, 45, 15], [61, 46, 16]]]];
+// python-qrcode の PATTERN_POSITION_TABLE より
+const ALIGN_POS = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50], [6, 30, 54], [6, 32, 58], [6, 34, 62], [6, 26, 46, 66], [6, 26, 48, 70], [6, 26, 50, 74], [6, 30, 54, 78], [6, 30, 56, 82], [6, 30, 58, 86], [6, 34, 62, 90], [6, 28, 50, 72, 94], [6, 26, 50, 74, 98], [6, 30, 54, 78, 102], [6, 28, 54, 80, 106], [6, 32, 58, 84, 110], [6, 30, 58, 86, 114], [6, 34, 62, 90, 118], [6, 26, 50, 74, 98, 122], [6, 30, 54, 78, 102, 126], [6, 26, 52, 78, 104, 130], [6, 30, 56, 82, 108, 134], [6, 34, 60, 86, 112, 138], [6, 30, 58, 86, 114, 142], [6, 34, 62, 90, 118, 146], [6, 30, 54, 78, 102, 126, 150], [6, 24, 50, 76, 102, 128, 154], [6, 28, 54, 80, 106, 132, 158], [6, 32, 58, 84, 110, 136, 162], [6, 26, 54, 82, 110, 138, 166], [6, 30, 58, 86, 114, 142, 170]];
+
+</script>
+<script>
+/* ===========================================================
+   Shift-JIS(cp932) エンコーダ + QRコード生成器（依存ライブラリなし）
+   qrdata.js（SJIS_RUNS / SJIS_ALIAS / SJIS_SUBS / RS_BLOCKS / ALIGN_POS）を先に読むこと。
+   =========================================================== */
+
+/* ---------------- Shift-JIS (cp932) ---------------- */
+
+const _SJIS_LEADS = [];
+for (let b = 0x81; b <= 0x9f; b++) _SJIS_LEADS.push(b);
+for (let b = 0xe0; b <= 0xfc; b++) _SJIS_LEADS.push(b);
+const _SJIS_TRAILS = [];
+for (let b = 0x40; b <= 0x7e; b++) _SJIS_TRAILS.push(b);
+for (let b = 0x80; b <= 0xfc; b++) _SJIS_TRAILS.push(b);
+
+let _sjisMap = null;
+function sjisMap() {
+  if (_sjisMap) return _sjisMap;
+  const m = new Map();
+  const nt = _SJIS_TRAILS.length;
+  for (const [start, s] of SJIS_RUNS) {
+    for (let k = 0; k < s.length; k++) {
+      const idx = start + k;
+      m.set(s[k], [_SJIS_LEADS[(idx / nt) | 0], _SJIS_TRAILS[idx % nt]]);
+    }
+  }
+  for (const ch of Object.keys(SJIS_ALIAS)) {
+    if (!m.has(ch)) m.set(ch, SJIS_ALIAS[ch]);
+  }
+  _sjisMap = m;
+  return m;
+}
+
+/**
+ * 文字列を Shift-JIS(cp932) バイト列にする。
+ * 変換できない文字は '?' に置き換え、dropped に記録する（黙って消さない）。
+ * @returns {{bytes:number[], dropped:{ch:string,index:number}[], normalized:string}}
+ */
+function encodeSJIS(text, opts) {
+  opts = opts || {};
+  let s = String(text);
+  if (opts.normalize !== false) s = s.normalize('NFKC');
+  s = s.replace(/\r\n?/g, '\n');
+  // 正規化の「後」に置換する。NFKC は ￥(U+FFE5) を ¥(U+00A5, cp932不可) に変えるため。
+  for (const from of Object.keys(SJIS_SUBS)) {
+    if (s.indexOf(from) >= 0) s = s.split(from).join(SJIS_SUBS[from]);
+  }
+
+  const map = sjisMap();
+  const out = [];
+  const dropped = [];
+  let i = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (ch === '\n') {
+      out.push(0x0a);
+    } else if (cp < 0x80) {
+      out.push(cp);
+    } else if (cp >= 0xff61 && cp <= 0xff9f) {
+      out.push(cp - 0xff61 + 0xa1); // 半角カナ（NFKC無効時のみ通る）
+    } else {
+      const pair = map.get(ch);
+      if (pair) {
+        out.push(pair[0], pair[1]);
+      } else {
+        out.push(0x3f); // '?'
+        dropped.push({ ch: ch, index: i });
+      }
+    }
+    i += ch.length;
+  }
+  return { bytes: out, dropped: dropped, normalized: s };
+}
+
+/* ---------------- ガロア体 GF(256) ---------------- */
+
+const GF_EXP = new Uint8Array(512);
+const GF_LOG = new Uint8Array(256);
+(function () {
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    GF_EXP[i] = x;
+    GF_LOG[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+})();
+
+function gfMul(a, b) {
+  if (a === 0 || b === 0) return 0;
+  return GF_EXP[GF_LOG[a] + GF_LOG[b]];
+}
+
+function polyMul(a, b) {
+  const r = new Array(a.length + b.length - 1).fill(0);
+  for (let i = 0; i < a.length; i++)
+    for (let j = 0; j < b.length; j++) r[i + j] ^= gfMul(a[i], b[j]);
+  return r;
+}
+
+const _genCache = {};
+function rsGenPoly(n) {
+  if (_genCache[n]) return _genCache[n];
+  let p = [1];
+  for (let i = 0; i < n; i++) p = polyMul(p, [1, GF_EXP[i]]);
+  _genCache[n] = p;
+  return p;
+}
+
+function rsEncode(data, ecLen) {
+  const gen = rsGenPoly(ecLen);
+  const res = new Array(data.length + ecLen).fill(0);
+  for (let i = 0; i < data.length; i++) res[i] = data[i];
+  for (let i = 0; i < data.length; i++) {
+    const coef = res[i];
+    if (coef === 0) continue;
+    for (let j = 0; j < gen.length; j++) res[i + j] ^= gfMul(gen[j], coef);
+  }
+  return res.slice(data.length);
+}
+
+/* ---------------- QR 本体 ---------------- */
+
+const EC_ORDER = { L: 0, M: 1, Q: 2, H: 3 };
+const EC_FORMAT_BITS = { L: 1, M: 0, Q: 3, H: 2 };
+
+function dataCodewords(version, ec) {
+  let total = 0;
+  for (const g of RS_BLOCKS[version - 1][EC_ORDER[ec]]) total += g[0] * g[2];
+  return total;
+}
+
+function charCountBits(version) {
+  return version <= 9 ? 8 : 16; // 8ビットバイトモード
+}
+
+function chooseVersion(byteLen, ec, minVersion) {
+  for (let v = minVersion || 1; v <= 40; v++) {
+    const need = 4 + charCountBits(v) + byteLen * 8;
+    if (need <= dataCodewords(v, ec) * 8) return v;
+  }
+  return null; // 容量オーバー
+}
+
+function buildCodewords(bytes, version, ec) {
+  const cap = dataCodewords(version, ec);
+  const bits = [];
+  const put = (val, len) => {
+    for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
+  };
+  put(0b0100, 4);
+  put(bytes.length, charCountBits(version));
+  for (const b of bytes) put(b, 8);
+
+  const capBits = cap * 8;
+  put(0, Math.min(4, capBits - bits.length)); // 終端子
+  while (bits.length % 8 !== 0) bits.push(0);
+
+  const words = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let v = 0;
+    for (let j = 0; j < 8; j++) v = (v << 1) | bits[i + j];
+    words.push(v);
+  }
+  const PAD = [0xec, 0x11];
+  let k = 0;
+  while (words.length < cap) words.push(PAD[k++ % 2]);
+  return words;
+}
+
+function interleave(words, version, ec) {
+  const groups = RS_BLOCKS[version - 1][EC_ORDER[ec]];
+  const dataBlocks = [];
+  const ecBlocks = [];
+  let pos = 0;
+  for (const g of groups) {
+    const count = g[0], total = g[1], dat = g[2];
+    for (let i = 0; i < count; i++) {
+      const d = words.slice(pos, pos + dat);
+      pos += dat;
+      dataBlocks.push(d);
+      ecBlocks.push(rsEncode(d, total - dat));
+    }
+  }
+  const out = [];
+  const maxD = Math.max.apply(null, dataBlocks.map((b) => b.length));
+  for (let i = 0; i < maxD; i++)
+    for (const b of dataBlocks) if (i < b.length) out.push(b[i]);
+  const maxE = Math.max.apply(null, ecBlocks.map((b) => b.length));
+  for (let i = 0; i < maxE; i++)
+    for (const b of ecBlocks) if (i < b.length) out.push(b[i]);
+  return out;
+}
+
+function bitLength(x) {
+  let n = 0;
+  while (x !== 0) {
+    n++;
+    x >>>= 1;
+  }
+  return n;
+}
+
+function formatInfo(ec, mask) {
+  const data = (EC_FORMAT_BITS[ec] << 3) | mask;
+  let d = data << 10;
+  while (bitLength(d) >= 11) d ^= 0x537 << (bitLength(d) - 11);
+  return ((data << 10) | d) ^ 0x5412;
+}
+
+function versionInfo(version) {
+  let d = version << 12;
+  while (bitLength(d) >= 13) d ^= 0x1f25 << (bitLength(d) - 13);
+  return (version << 12) | d;
+}
+
+const MASK_FN = [
+  (r, c) => (r + c) % 2 === 0,
+  (r, c) => r % 2 === 0,
+  (r, c) => c % 3 === 0,
+  (r, c) => (r + c) % 3 === 0,
+  (r, c) => (((r / 2) | 0) + ((c / 3) | 0)) % 2 === 0,
+  (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+  (r, c) => ((((r * c) % 2) + ((r * c) % 3)) % 2) === 0,
+  (r, c) => ((((r + c) % 2) + ((r * c) % 3)) % 2) === 0,
+];
+
+function buildFunctionPatterns(version) {
+  const size = version * 4 + 17;
+  const m = [], res = [];
+  for (let i = 0; i < size; i++) {
+    m.push(new Array(size).fill(0));
+    res.push(new Array(size).fill(false));
+  }
+
+  const finder = (r0, c0) => {
+    for (let dr = -1; dr <= 7; dr++)
+      for (let dc = -1; dc <= 7; dc++) {
+        const r = r0 + dr, c = c0 + dc;
+        if (r < 0 || c < 0 || r >= size || c >= size) continue;
+        let v = 0;
+        if (dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6) {
+          const border = dr === 0 || dr === 6 || dc === 0 || dc === 6;
+          const core = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+          v = border || core ? 1 : 0;
+        }
+        m[r][c] = v;
+        res[r][c] = true;
+      }
+  };
+  finder(0, 0);
+  finder(0, size - 7);
+  finder(size - 7, 0);
+
+  // タイミングパターン
+  for (let i = 8; i < size - 8; i++) {
+    const v = i % 2 === 0 ? 1 : 0;
+    m[6][i] = v; res[6][i] = true;
+    m[i][6] = v; res[i][6] = true;
+  }
+
+  // アライメントパターン
+  const pos = ALIGN_POS[version - 1];
+  for (const r of pos)
+    for (const c of pos) {
+      if ((r === 6 && c === 6) || (r === 6 && c === size - 7) || (r === size - 7 && c === 6))
+        continue;
+      for (let dr = -2; dr <= 2; dr++)
+        for (let dc = -2; dc <= 2; dc++) {
+          const rr = r + dr, cc = c + dc;
+          const edge = Math.abs(dr) === 2 || Math.abs(dc) === 2;
+          const center = dr === 0 && dc === 0;
+          m[rr][cc] = edge || center ? 1 : 0;
+          res[rr][cc] = true;
+        }
+    }
+
+  // 形式情報の予約領域＋常に暗のモジュール
+  for (let i = 0; i < 9; i++) {
+    if (!res[8][i]) { res[8][i] = true; }
+    if (!res[i][8]) { res[i][8] = true; }
+  }
+  for (let i = 0; i < 8; i++) {
+    res[size - 1 - i][8] = true;
+    res[8][size - 1 - i] = true;
+  }
+  m[size - 8][8] = 1;
+  res[size - 8][8] = true;
+
+  // 型番情報の予約領域（version 7 以上）
+  if (version >= 7) {
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 3) | 0, b = size - 11 + (i % 3);
+      res[a][b] = true;
+      res[b][a] = true;
+    }
+  }
+  return { size, m, res };
+}
+
+function placeData(base, codewords) {
+  const size = base.size;
+  const m = base.m.map((row) => row.slice());
+  const res = base.res;
+  const bits = [];
+  for (const w of codewords) for (let i = 7; i >= 0; i--) bits.push((w >> i) & 1);
+
+  let idx = 0, dir = -1, row = size - 1;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--; // 垂直タイミングパターン列は飛ばす
+    for (;;) {
+      for (const c of [col, col - 1]) {
+        if (!res[row][c]) {
+          m[row][c] = idx < bits.length ? bits[idx] : 0;
+          idx++;
+        }
+      }
+      row += dir;
+      if (row < 0 || row >= size) {
+        row -= dir;
+        dir = -dir;
+        break;
+      }
+    }
+  }
+  return m;
+}
+
+function applyMask(m, res, size, mask) {
+  const out = m.map((row) => row.slice());
+  const fn = MASK_FN[mask];
+  for (let r = 0; r < size; r++)
+    for (let c = 0; c < size; c++)
+      if (!res[r][c] && fn(r, c)) out[r][c] ^= 1;
+  return out;
+}
+
+/**
+ * 形式情報15ビット（ビット0から順に、列8を上→下・行8を右→左）と型番情報を書き込む。
+ * test=true のときは全て0にする。マスク選択の評価はこの状態の行列に対して行う
+ * （python-qrcode の makeImpl(test=True) と同じ扱い。ここを揃えないとマスク選択がずれる）。
+ */
+function writeFormat(out, size, ec, mask, version, test) {
+  const fmt = formatInfo(ec, mask);
+  for (let i = 0; i < 15; i++) {
+    const b = test ? 0 : (fmt >> i) & 1;
+    if (i < 6) out[i][8] = b;
+    else if (i < 8) out[i + 1][8] = b;
+    else out[size - 15 + i][8] = b;
+
+    if (i < 8) out[8][size - 1 - i] = b;
+    else if (i === 8) out[8][7] = b;
+    else out[8][14 - i] = b;
+  }
+  out[size - 8][8] = test ? 0 : 1;
+
+  if (version >= 7) {
+    const vi = versionInfo(version);
+    for (let i = 0; i < 18; i++) {
+      const b = test ? 0 : (vi >> i) & 1;
+      out[(i / 3) | 0][size - 11 + (i % 3)] = b;
+      out[size - 11 + (i % 3)][(i / 3) | 0] = b;
+    }
+  }
+  return out;
+}
+
+function penalty(m) {
+  const size = m.length;
+  let score = 0;
+
+  // 規則1: 同色5連以上
+  for (let k = 0; k < 2; k++) {
+    for (let i = 0; i < size; i++) {
+      let run = 1;
+      for (let j = 1; j < size; j++) {
+        const cur = k === 0 ? m[i][j] : m[j][i];
+        const prev = k === 0 ? m[i][j - 1] : m[j - 1][i];
+        if (cur === prev) {
+          run++;
+        } else {
+          if (run >= 5) score += 3 + (run - 5);
+          run = 1;
+        }
+      }
+      if (run >= 5) score += 3 + (run - 5);
+    }
+  }
+
+  // 規則2: 2x2 の同色ブロック
+  for (let r = 0; r < size - 1; r++)
+    for (let c = 0; c < size - 1; c++) {
+      const v = m[r][c];
+      if (v === m[r][c + 1] && v === m[r + 1][c] && v === m[r + 1][c + 1]) score += 3;
+    }
+
+  // 規則3: 1:1:3:1:1 比率パターン
+  const P1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0];
+  const P2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+  const match = (get, i, p) => {
+    for (let k = 0; k < 11; k++) if (get(i + k) !== p[k]) return false;
+    return true;
+  };
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j <= size - 11; j++) {
+      const rowGet = (x) => m[i][x];
+      const colGet = (x) => m[x][i];
+      if (match(rowGet, j, P1)) score += 40;
+      if (match(rowGet, j, P2)) score += 40;
+      if (match(colGet, j, P1)) score += 40;
+      if (match(colGet, j, P2)) score += 40;
+    }
+  }
+
+  // 規則4: 明暗の偏り
+  let dark = 0;
+  for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) dark += m[r][c];
+  const total = size * size;
+  score += Math.floor(Math.abs((dark * 100) / total - 50) / 5) * 10;
+
+  return score;
+}
+
+/**
+ * バイト列から QR のモジュール行列を作る。
+ * @returns {{modules:number[][], size:number, version:number, ec:string, mask:number}}
+ */
+function qrFromBytes(bytes, ec, minVersion, forceMask) {
+  ec = ec || 'M';
+  const version = chooseVersion(bytes.length, ec, minVersion);
+  if (!version) throw new Error('データが大きすぎてQRに入りません（' + bytes.length + ' バイト）');
+
+  const words = interleave(buildCodewords(bytes, version, ec), version, ec);
+  const base = buildFunctionPatterns(version);
+  const raw = placeData(base, words);
+
+  let bestMask = 0;
+  if (forceMask != null) {
+    bestMask = forceMask;
+  } else {
+    let bestScore = Infinity;
+    for (let mask = 0; mask < 8; mask++) {
+      const cand = writeFormat(
+        applyMask(raw, base.res, base.size, mask), base.size, ec, mask, version, true);
+      const p = penalty(cand);
+      if (p < bestScore) { bestScore = p; bestMask = mask; } // 同点は若い番号を優先
+    }
+  }
+  const modules = writeFormat(
+    applyMask(raw, base.res, base.size, bestMask), base.size, ec, bestMask, version, false);
+  return { modules, size: base.size, version, ec, mask: bestMask };
+}
+
+/** 容量の上限（そのバージョン/ECレベルで入るバイト数） */
+function maxBytes(version, ec) {
+  return dataCodewords(version, ec) - Math.ceil((4 + charCountBits(version)) / 8);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { encodeSJIS, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
+}
+
+</script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+/* 改行はスキャナ→電子カルテで「そのまま消える」ことが実機で確認されている。
+   消えると前後の項目が繋がって誤読を招くので、既定で | に置き換える。 */
+const NL_REPL = { bar: '|', sp: ' ' };
+
+function sourceText() {
+  const raw = $('src').value;
+  const mode = $('nl').value;
+  if (mode === 'keep') return raw;
+  const r = NL_REPL[mode];
+  return raw.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '')   // 空行が区切りの連続にならないように
+    .join(r);
+}
+
+/* enc.normalized は「?」に置き換える前の文字列なので、そのまま出すと
+   実際にスキャナが送るものと食い違う。dropped の位置を ? に潰して実物を出す。 */
+function deliveredText(enc) {
+  if (!enc.dropped.length) return enc.normalized;
+  let r = '', prev = 0;
+  for (const d of enc.dropped) {
+    r += enc.normalized.slice(prev, d.index) + '?';
+    prev = d.index + d.ch.length;
+  }
+  return r + enc.normalized.slice(prev);
+}
+
+function makeCanvas(res, scale) {
+  const quiet = 4;
+  const n = res.size + quiet * 2;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = n * scale;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#000';
+  for (let r = 0; r < res.size; r++)
+    for (let c = 0; c < res.size; c++)
+      if (res.modules[r][c])
+        g.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+  return cv;
+}
+
+let lastRes = null;
+
+function render() {
+  const scale = +$('scale').value;
+  $('scaleVal').textContent = '(' + scale + ')';
+
+  const text = sourceText();
+  const ec = $('ec').value;
+  const enc = encodeSJIS(text);
+  $('out').textContent = deliveredText(enc);
+
+  const alerts = [];
+  let res = null;
+  if (text !== '') {
+    try {
+      res = qrFromBytes(enc.bytes, ec);
+    } catch (e) {
+      alerts.push(['warn', e.message + ' 文章を短くするか、誤り訂正を L にしてください。']);
+    }
+  }
+  lastRes = res;
+
+  if (res) {
+    $('qrbox').replaceChildren(makeCanvas(res, scale));
+    $('meta').innerHTML =
+      '<span class="badge">Shift-JIS <b>' + enc.bytes.length + '</b> バイト</span>' +
+      '<span class="badge">型番 <b>v' + res.version + '</b> (' + res.size + '×' + res.size + ')</span>' +
+      '<span class="badge">誤り訂正 <b>' + ec + '</b></span>' +
+      '<span class="badge">この型番の上限 <b>' + maxBytes(res.version, ec) + '</b> バイト</span>';
+  } else {
+    $('qrbox').replaceChildren();
+    $('meta').innerHTML = text === '' ? '' :
+      '<span class="badge">Shift-JIS <b>' + enc.bytes.length + '</b> バイト</span>';
+  }
+
+  if ($('nl').value === 'keep' && /\r?\n/.test($('src').value)) {
+    alerts.push(['warn', '★改行は実機（L-46X→電子カルテ）で消えることを確認済みです。' +
+      '前後の項目が繋がって誤読を招くため、「| に置き換える」を使ってください。']);
+  }
+  if (enc.dropped.length) {
+    const list = [...new Set(enc.dropped.map((d) => d.ch))].join(' ');
+    alerts.push(['warn', 'Shift-JISに変換できない文字が ' + enc.dropped.length +
+      ' 個あり「?」に置き換えました → ' + list]);
+  }
+  $('alerts').innerHTML = alerts
+    .map(([k, m]) => '<div class="alert ' + k + '">' + m + '</div>').join('');
+}
+
+/* ---- 貼り付け ---- */
+/* clipboard.readText() は安全なコンテキスト＋許可が要る。file:// では動かないことがあるので、
+   失敗したら長押し貼り付けに誘導する（黙って何も起きない、を避ける）。 */
+$('btnPaste').onclick = async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (t) { $('src').value = t; render(); return; }
+    $('pasteHint').textContent = 'クリップボードが空でした。';
+  } catch (e) {
+    $('pasteHint').textContent =
+      'この環境ではボタンから読み取れません。テキスト欄を長押しして端末の「貼り付け」を使ってください。';
+    $('src').focus();
+  }
+};
+$('btnClear').onclick = () => { $('src').value = ''; render(); $('src').focus(); };
+
+/* ---- 全画面表示 ---- */
+/* スキャナに読ませる間だけ画面を消させない。Wake Lock も安全なコンテキスト限定なので握りつぶす。 */
+let wakeLock = null;
+async function openFull() {
+  if (!lastRes) return;
+  $('fullbox').replaceChildren(makeCanvas(lastRes, 14));
+  $('full').classList.add('on');
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* 非対応 */ }
+}
+async function closeFull() {
+  $('full').classList.remove('on');
+  try { if (wakeLock) { await wakeLock.release(); wakeLock = null; } } catch (e) { /* noop */ }
+}
+$('btnFull').onclick = openFull;
+$('full').onclick = closeFull;
+
+document.addEventListener('input', render);
+document.addEventListener('change', render);
+render();
+</script>
+</body>
+</html>
