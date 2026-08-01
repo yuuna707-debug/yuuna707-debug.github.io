@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- 待合のQRから来てもらう想定。検索で拾われると患者が古い版に当たりうる。 -->
 <meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0b6bcb">
 <title>救急外来 問診</title>
 <style>
   :root{
@@ -402,7 +404,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-08-01 c51df42</b>
+  版: <b>2026-08-01 3b43c21</b>
 </p>
 
 </div>
@@ -1234,6 +1236,13 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', () => { render(); });
 
 render();
+</script>
+<script>
+/* PWA。file:// 配布では SW は成立しないので https のときだけ登録する
+   （ガードしないとローカル版でコンソールにエラーが出続ける）。 */
+if (location.protocol === 'https:' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+}
 </script>
 </body>
 </html>

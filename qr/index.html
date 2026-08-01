@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#1a7a3d">
 <title>貼り付け → Shift-JIS QR</title>
 <style>
   :root{
@@ -124,7 +126,7 @@
 <p class="foot">
   このページは通信しません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-08-01 c51df42</b>
+  版: <b>2026-08-01 3b43c21</b>
 </p>
 
 </div>
@@ -741,6 +743,13 @@ $('full').onclick = closeFull;
 document.addEventListener('input', render);
 document.addEventListener('change', render);
 render();
+</script>
+<script>
+/* PWA。このページは dist/qr/index.html として出るので sw.js は1つ上にある。
+   file:// 配布では SW は成立しないので https のときだけ登録する。 */
+if (location.protocol === 'https:' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('../sw.js'));
+}
 </script>
 </body>
 </html>
