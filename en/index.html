@@ -1,428 +1,163 @@
-<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- 待合のQRから来てもらう想定。検索で拾われると患者が古い版に当たりうる。 -->
-<meta name="robots" content="noindex, nofollow">
-<link rel="manifest" href="./manifest.json">
-<meta name="theme-color" content="#0b6bcb">
-<title>救急外来 問診</title>
-<style>
-  :root{
-    --bg:#f5f6f8; --panel:#fff; --ink:#1b1f24; --sub:#5b6470;
-    --line:#d7dbe0; --accent:#0b6bcb; --warn:#b3261e; --ok:#1f7a3d;
-    --radius:12px;
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><link rel="manifest" href="../manifest.json"><meta name="theme-color" content="#0b6bcb"><title>Emergency Questionnaire</title><style>
+/* 成人英語版・小児2言語版（/en/ /ped/ /ped/en/）の共通スタイル。
+ * build.py が <!--FORMSTYLE--> の位置へ丸ごと差し込むので、<style> ごと持っている。
+ * 成人日本語版（/）と貼り付けQR（/qr/）はそれぞれ自前のスタイルを持つ。
+ */
+
+/* ★配色で版を区別する。成人=青・小児=緑。掲示ポスターの帯と揃えてあり、
+   患者が別のフォームを開いていることに受付が気づけるようにしている。
+   既定を緑（小児）にして、成人版だけ body.adult で青へ上書きする。 */
+body.adult { --accent: #0b6bcb }
+
+:root {
+  --bg: #f5f7f6;
+  --panel: #fff;
+  --ink: #17211c;
+  --sub: #58635d;
+  --line: #ccd5d0;
+  --accent: #1a7a3d;
+  --warn: #b3261e;
+}
+
+* { box-sizing: border-box }
+
+/* 待合で立ったまま・片手で操作する前提。17px は小さくしないこと。 */
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.55 system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif;
+}
+
+main { max-width: 880px; margin: auto; padding: 16px 14px 60px }
+
+/* ---- カード ---- */
+
+header, section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+header { border-top: 8px solid var(--accent) }
+
+h1 { font-size: 1.4rem; margin: 0 }
+h2 { font-size: 1.08rem; margin: 0 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px }
+h3 { font-size: .95rem; color: var(--sub) }
+
+/* 言語切替リンク。h1 の右肩へ載せる。 */
+nav { float: right; margin-top: -1.8rem }
+a { color: var(--accent) }
+
+/* ---- 入力 ---- */
+
+label { display: block; font-weight: 650; margin: 12px 0 5px }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap }
+.row > * { flex: 1 1 200px }       /* 狭い画面では自動的に1列になる */
+.field { min-width: 0 }            /* flex 内でテキストがはみ出さないように */
+
+input, select, textarea, button { font: inherit }
+
+/* チェックボックス・ラジオ・スライダーは自前の大きさで出したいので除外する。 */
+input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea {
+  width: 100%;
+  padding: 11px;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+textarea { min-height: 78px }
+
+/* 症状などの複数選択。指で押せる大きさを確保する。 */
+.chips { display: flex; flex-wrap: wrap; gap: 7px }
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: .88rem;
+  margin: 0;
+}
+.chip input { width: 19px; height: 19px }
+
+/* ---- 通知 ---- */
+
+.notice, .alert {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #e5f4ea;
+  border: 1px solid var(--accent);
+}
+.alert { background: #fff0ef; border-color: var(--warn); color: var(--warn); margin: 10px 0 }
+.hint { font-size: .83rem; color: var(--sub) }
+
+/* 単位付きの入力（kg / lb、℃ / °F）。セレクトだけ幅を内容に合わせる。 */
+.unitrow { display: flex; gap: 7px }
+.unitrow input { flex: 1 }
+.unitrow select { width: auto }
+
+/* 元気さ・飲み食べ・痛みのスライダーと顔文字。 */
+.rangebox { padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin: 10px 0 }
+.rangebox input { width: 100% }
+.faces { display: flex; justify-content: space-between; font-size: 1.3rem }
+
+/* ---- ボタン ---- */
+
+/* 「入力をすべて消す」。取り消せない操作なので赤枠にする（押下時は confirm も出る）。 */
+.danger {
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--warn);
+  margin: 4px;
+  color: var(--warn);
+  background: #fff;
+}
+
+/* ---- QR ---- */
+
+.controls { display: flex; gap: 12px; flex-wrap: wrap }
+.controls label { font-size: .85rem }
+
+#qrbox { display: flex; justify-content: center; background: #fff; padding: 12px }
+/* ★補間させない。滑らかに拡大されるとモジュールの境界がぼけて読み取りが落ちる。 */
+#qrbox canvas { max-width: 100%; height: auto; image-rendering: pixelated }
+
+/* カルテに入る文字列のプレビュー。区切りなしで続くので強制的に折り返す。 */
+pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg);
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+footer { text-align: center; color: var(--sub); font-size: .78rem; padding: 20px }
+
+/* ★!important を外さないこと。ブラウザ既定の [hidden]{display:none} は
+   作者側の display 指定（.chip / .unitrow / label など）に負けるため、
+   そうした要素に hidden を付けても消えなくなる。隠したつもりの項目が
+   画面に残ると、答えたのにQRに入らない（またはその逆）が起きる。 */
+[hidden] { display: none !important }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151a17;
+    --panel: #202622;
+    --ink: #edf2ef;
+    --sub: #aab4ae;
+    --line: #3c4740;
+    --accent: #70d493;
   }
-  @media (prefers-color-scheme:dark){
-    :root{ --bg:#14171a; --panel:#1e2226; --ink:#e8eaed; --sub:#9aa3ad;
-           --line:#333a41; --accent:#5aa9ff; --warn:#ff8a80; --ok:#7bd39a; }
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-       font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;
-       font-size:17px;line-height:1.6;-webkit-text-size-adjust:100%}
-  .wrap{max-width:860px;margin:0 auto;padding:16px 14px 64px}
-  h1{font-size:1.25rem;margin:.2em 0 .1em}
-  .lead{color:var(--sub);font-size:.9rem;margin:0 0 18px}
-  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-          padding:16px;margin-bottom:16px}
-  h2{font-size:1.02rem;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
-  h3{font-size:.94rem;margin:18px 0 6px;color:var(--sub)}
-  label{display:block;font-weight:600;font-size:.92rem;margin:14px 0 6px}
-  .field:first-child>label{margin-top:0}
-  input[type=text],input[type=number],textarea,select{
-    width:100%;padding:12px;font-size:1rem;font-family:inherit;color:var(--ink);
-    background:var(--bg);border:1px solid var(--line);border-radius:8px}
-  textarea{min-height:80px;resize:vertical}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  .row>*{flex:1 1 170px}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-  .chip{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg);
-        border:1px solid var(--line);border-radius:999px;cursor:pointer;font-size:.88rem;
-        min-height:44px}
-  .chip input{width:20px;height:20px;margin:0;accent-color:var(--accent);flex:none}
-  .chip.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
-  button{font:inherit;padding:12px 16px;border-radius:8px;border:1px solid var(--line);
-         background:var(--panel);color:var(--ink);cursor:pointer;min-height:44px}
-  button:active{transform:translateY(1px)}
-  .branch{display:flex;gap:12px;flex-wrap:wrap}
-  .branch button{flex:1 1 220px;padding:20px 16px;font-size:1.05rem;font-weight:700;line-height:1.4}
-  .branch button small{display:block;font-weight:400;font-size:.82rem;color:var(--sub);margin-top:4px}
-  .branch button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
-  #qrbox{display:flex;justify-content:center;padding:18px;background:#fff;border-radius:8px}
-  #qrbox canvas{image-rendering:pixelated;max-width:100%;height:auto}
-  pre{white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--line);
-      border-radius:8px;padding:12px;font-size:.86rem;margin:0;
-      font-family:ui-monospace,Menlo,Consolas,"Noto Sans Mono",monospace}
-  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
-  .badge{font-size:.82rem;padding:5px 10px;border-radius:999px;background:var(--bg);
-         border:1px solid var(--line);color:var(--sub)}
-  .badge b{color:var(--ink)}
-  .alert{border-radius:8px;padding:12px;font-size:.9rem;margin-top:12px}
-  .alert.warn{background:color-mix(in srgb,var(--warn) 14%,transparent);
-              border:1px solid var(--warn);color:var(--warn)}
-  .alert.ok{background:color-mix(in srgb,var(--ok) 12%,transparent);
-            border:1px solid var(--ok);color:var(--ok)}
-  .hint{color:var(--sub);font-size:.82rem;margin-top:6px}
-  .ctl{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
-  .ctl>div{flex:0 1 auto}
-  .ctl label{margin:0 0 4px}
-  .ctl select,.ctl input[type=range]{width:auto;min-width:130px}
-  details{border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px;
-          background:var(--panel);margin-bottom:16px}
-  summary{cursor:pointer;font-weight:700;font-size:.95rem}
-  .presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-  .presets button{font-size:.85rem;padding:9px 12px}
-  .foot{color:var(--sub);font-size:.8rem;text-align:center;margin-top:24px;line-height:1.7}
-  [hidden]{display:none !important}
-  /* 紙の問診票の「（職員記入欄）」に合わせた破線枠 */
-  .staff{border:1px dashed var(--sub);border-radius:8px;padding:12px 14px;margin-top:18px;
-         position:relative}
-  .staff-tag{position:absolute;top:-10px;left:12px;background:var(--panel);padding:0 6px;
-             font-size:.76rem;color:var(--sub)}
-  .staff label{margin-top:4px}
-  .reset{border-color:var(--warn);color:var(--warn);font-weight:700}
+}
 </style>
-</head>
-<body>
-<div class="wrap">
-
-<h1>救急外来 問診</h1>
-<p class="hint"><a href="./ped/">小児版</a> ／ <a href="./en/" lang="en">English</a></p>
-<p class="lead">
-  お答えいただいた内容は<b>この端末の外に出ません</b>（送信ボタンはありません）。
-  最後に表示される QR コードを、受付でお見せください。
-</p>
-
-<!-- ========== 1. 受付 ========== -->
-<section>
-  <h2>1. あなたのこと</h2>
-  <p class="hint" style="margin:-4px 0 12px">
-    ★ 取り違えを防ぐため、<b>お名前と生年月日は必ず入力してください</b>。
-  </p>
-
-  <div class="row">
-    <div class="field">
-      <label for="name">お名前</label>
-      <input type="text" id="name" placeholder="例: 山田 太郎">
-    </div>
-    <div class="field">
-      <label for="kana">フリガナ</label>
-      <input type="text" id="kana" placeholder="例: ヤマダ タロウ">
-    </div>
-  </div>
-
-  <label for="pid">診察券番号（お分かりになれば）</label>
-  <input type="text" id="pid" inputmode="numeric" placeholder="診察券に書かれている番号">
-  <p class="hint">当院を受診したことがある方は診察券に記載されています。初めての方は空欄で構いません。</p>
-
-  <label for="era">生年月日</label>
-  <div class="row">
-    <div style="flex:1 1 110px">
-      <select id="era">
-        <option value="1926" selected>昭和</option>
-        <option value="1989">平成</option>
-        <option value="2019">令和</option>
-        <option value="1912">大正</option>
-        <option value="seireki">西暦</option>
-      </select>
-    </div>
-    <div style="flex:1 1 90px">
-      <input type="text" id="byear" inputmode="numeric" placeholder="年">
-    </div>
-    <div style="flex:1 1 80px">
-      <input type="text" id="bmonth" inputmode="numeric" placeholder="月">
-    </div>
-    <div style="flex:1 1 80px">
-      <input type="text" id="bday" inputmode="numeric" placeholder="日">
-    </div>
-    <div style="flex:1 1 110px">
-      <select id="sex">
-        <option value="">性別 —</option>
-        <option value="男">男</option>
-        <option value="女">女</option>
-      </select>
-    </div>
-  </div>
-  <p class="hint" id="dobAbs"></p>
-
-  <div class="row">
-    <div class="field">
-      <label for="who">入力したのは</label>
-      <select id="who">
-        <option>本人</option><option>家族・付き添い</option><option>スタッフ代行</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="first">当院は初めてですか</label>
-      <select id="first">
-        <option value="">—</option>
-        <option value="初診">はい（初めて）</option>
-        <option value="再診">いいえ（受診したことがある）</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="staff">
-    <span class="staff-tag">職員記入欄</span>
-    <label for="recv">受付番号</label>
-    <input type="text" id="recv" inputmode="numeric" placeholder="職員が入力します">
-    <p class="hint">患者さんは入力不要です。将来的には自動採番にする想定。</p>
-  </div>
-
-  <label for="trigger">今回の来院のきっかけ</label>
-  <div class="row">
-    <div>
-      <select id="trigger">
-        <option value="">—</option>
-        <option>救急車での搬送</option>
-        <option>他の医療機関からの紹介（紹介状あり）</option>
-        <option>他の医療機関からの紹介（紹介状なし）</option>
-        <option>救急・時間外診療（休日・夜間など）</option>
-        <option>公的機関・相談窓口からの紹介</option>
-        <option>自宅・職場が近い</option>
-        <option>家族・知人からの勧め</option>
-        <option>その他</option>
-      </select>
-    </div>
-    <div>
-      <input type="text" id="reffrom" placeholder="紹介元の医療機関名（紹介の場合）">
-    </div>
-  </div>
-  <p class="hint">救急車での搬送の場合、救急隊からの電話内容は別途取り込まれます。</p>
-
-  <label>該当するものがあれば選んでください</label>
-  <div class="chips" id="insurance"></div>
-
-  <h3>緊急連絡先</h3>
-  <div class="row">
-    <div><label for="emName">氏名・続柄</label><input type="text" id="emName" placeholder="例: 山田 花子（妻）"></div>
-    <div><label for="emPhone">電話番号</label><input type="text" id="emPhone" inputmode="tel" placeholder="例: 090-1234-5678"></div>
-  </div>
-</section>
-
-<!-- ========== 2. 分岐 ========== -->
-<section>
-  <h2>2. 今日はどうされましたか</h2>
-  <div class="branch">
-    <button type="button" data-branch="geka" id="btnGeka">
-      けが・打った・痛み
-      <small>転倒、事故、スポーツ、腰や膝の痛み など</small>
-    </button>
-    <button type="button" data-branch="naika" id="btnNaika">
-      熱・かぜ・体調が悪い
-      <small>発熱、せき、のどの痛み、腹痛、めまい など</small>
-    </button>
-  </div>
-  <p class="hint">どちらか迷う場合は近い方を選んでください。あとで変更できます。</p>
-</section>
-
-<!-- ========== 3a. 外科系 ========== -->
-<section id="secGeka" hidden>
-  <h2>3. けが・痛みについて</h2>
-
-  <label>どのような症状ですか</label>
-  <div class="chips" id="gSympt"></div>
-
-  <label>症状のある部位</label>
-  <div class="chips" id="gSite"></div>
-  <input type="text" id="gSiteOther" placeholder="その他の部位（自由に記入）">
-
-  <div class="row">
-    <div class="field">
-      <label for="gOnset">いつごろから</label>
-      <select id="gOnset"></select>
-    </div>
-    <div class="field">
-      <label for="gCause">きっかけ・原因</label>
-      <select id="gCause">
-        <option value="">—</option>
-        <option>交通事故</option><option>仕事中</option><option>スポーツ</option>
-        <option>転倒</option><option>その他</option><option>特に原因なし</option>
-      </select>
-    </div>
-  </div>
-  <p class="hint" id="gOnsetAbs"></p>
-
-  <label for="gSurg">過去に受けた手術（あれば）</label>
-  <input type="text" id="gSurg" placeholder="例: 胃の手術（2015年）">
-
-  <label>現在、治療中の病気</label>
-  <div class="chips" id="gHx"></div>
-  <input type="text" id="gHxOther" placeholder="その他の病名（自由に記入）">
-</section>
-
-<!-- ========== 3b. 内科系 ========== -->
-<section id="secNaika" hidden>
-  <h2>3. 熱・体調について</h2>
-
-  <div class="row">
-    <div class="field">
-      <label for="nOnset">症状はいつから</label>
-      <select id="nOnset"></select>
-    </div>
-    <div class="field">
-      <label for="nTemp">体温（分かれば）</label>
-      <input type="text" id="nTemp" inputmode="decimal" placeholder="例: 38.5">
-    </div>
-  </div>
-  <p class="hint" id="nOnsetAbs"></p>
-
-  <label>どのような症状ですか（あてはまるものすべて）</label>
-  <div class="chips" id="nSympt"></div>
-  <input type="text" id="nSymptOther" placeholder="その他の症状（自由に記入）">
-
-  <h3>感染症について</h3>
-  <div class="row">
-    <div class="field">
-      <label for="nAround">周りに同じような症状の方は</label>
-      <select id="nAround">
-        <option value="">—</option>
-        <option value="いない">いない</option>
-        <option value="同居家族">いる（同居家族）</option>
-        <option value="職場">いる（職場）</option>
-        <option value="学校">いる（学校）</option>
-        <option value="友人">いる（友人）</option>
-        <option value="その他">いる（その他）</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="nTravel">最近の旅行・イベント・渡航</label>
-      <input type="text" id="nTravel" placeholder="なし / 場所と時期">
-    </div>
-  </div>
-
-  <label>コロナ・インフルエンザについて</label>
-  <div class="chips" id="nInfect"></div>
-
-  <label>現在、治療中の慢性の病気</label>
-  <div class="chips" id="nHx"></div>
-  <input type="text" id="nHxOther" placeholder="その他の病名（自由に記入）">
-</section>
-
-<!-- ========== 4. 共通 ========== -->
-<section id="secCommon" hidden>
-  <h2>4. お薬・アレルギーなど</h2>
-
-  <label>血をサラサラにする薬を飲んでいますか（お薬手帳を見て選んでください）</label>
-  <div class="chips" id="anticoag"></div>
-
-  <div class="row">
-    <div class="field">
-      <label for="algDrug">薬のアレルギー</label>
-      <input type="text" id="algDrug" placeholder="例: なし / ペニシリン">
-    </div>
-    <div class="field">
-      <label for="algFood">食べ物のアレルギー</label>
-      <input type="text" id="algFood" placeholder="例: なし / サバ">
-    </div>
-  </div>
-
-  <div class="row">
-    <div class="field">
-      <label for="lastmeal">最後に飲食したのは</label>
-      <select id="lastmeal"></select>
-      <p class="hint">緊急の検査や手術・鎮静の判断に使います。</p>
-    </div>
-    <div class="field">
-      <label for="weight">体重（分かれば）</label>
-      <input type="text" id="weight" inputmode="decimal" placeholder="例: 62（kg）">
-      <p class="hint">薬・造影剤の量を決めるのに使います。</p>
-    </div>
-  </div>
-
-  <label for="preg">妊娠している可能性はありますか（女性の方）</label>
-  <div class="row">
-    <div>
-      <select id="preg">
-        <option value="">—</option>
-        <option value="なし">ない</option>
-        <option value="可能性あり">可能性がある</option>
-        <option value="妊娠中">妊娠中</option>
-        <option value="該当なし">対象外</option>
-      </select>
-    </div>
-    <div>
-      <input type="text" id="pregWk" placeholder="妊娠中の場合は週数・授乳の有無">
-    </div>
-  </div>
-
-  <label for="primaryDoctor">かかりつけ医（いつもの病院）</label>
-  <input type="text" id="primaryDoctor" placeholder="例: 市内クリニック / なし">
-
-  <label for="free">その他、伝えておきたいこと</label>
-  <textarea id="free" placeholder="自由に入力してください"></textarea>
-
-</section>
-
-<!-- ========== 5. 生成 ========== -->
-<section>
-  <h2>5. QRコード</h2>
-  <div id="formError" class="alert warn" hidden></div>
-  <div class="ctl">
-    <div>
-      <label for="sep">項目の区切り</label>
-      <select id="sep">
-        <option value="bar" selected>| 縦棒（実機確認済み・推奨）</option>
-        <option value="slash">/ スラッシュ</option>
-        <option value="sp">空白</option>
-        <option value="tab">Tab（★登録画面のフィールド移動テスト用）</option>
-        <option value="nl">改行（★実機で消えるため使用不可）</option>
-      </select>
-    </div>
-    <div>
-      <label for="ec">誤り訂正</label>
-      <select id="ec">
-        <option value="L">L（容量最大）</option>
-        <option value="M" selected>M（標準）</option>
-        <option value="Q">Q（頑丈）</option>
-        <option value="H">H（最も頑丈）</option>
-      </select>
-    </div>
-    <div>
-      <label for="scale">QRの大きさ <span id="scaleVal"></span></label>
-      <input type="range" id="scale" min="3" max="14" value="7">
-    </div>
-  </div>
-
-  <div id="qrbox"></div>
-  <div class="meta" id="meta"></div>
-  <div id="alerts"></div>
-
-  <label>電子カルテに入る文字列</label>
-  <pre id="out"></pre>
-
-  <div class="staff" style="margin-top:20px">
-    <span class="staff-tag">次の患者さんに渡す前に</span>
-    <p class="hint" style="margin:0 0 10px">
-      前の方の入力が残ったまま渡すと<b>取り違えの原因になります</b>。
-      読み取りが終わったら必ず押してください。
-    </p>
-    <button type="button" id="reset" class="reset">読み取り完了 — 入力をすべて消す</button>
-  </div>
-</section>
-
-<!-- ========== 6. 検証用 ========== -->
-<details>
-  <summary>検証用パターン（スキャナのテスト時に開く）</summary>
-  <div class="presets" id="presets"></div>
-  <p class="hint">
-    実機で確認済み：<b>| は完全に機能する</b>／<b>改行はそのまま消える</b>（項目が繋がり誤読を招く）／
-    <b>935バイト・型番v25 まで読み取れる</b>（実運用の問診まるごとは約370バイト）。
-  </p>
-</details>
-
-<p class="foot">
-  このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
-  QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-09-16 cac2efd</b>
-</p>
-
-</div>
-
-<script>
-// 自動生成 (gen_tables.py)。手で編集しない。
+</head><body class="adult"><main id="app" data-mode="adult" data-lang="en"></main><footer>Version: <b>2026-09-16 cac2efd</b></footer><script>// 自動生成 (gen_tables.py)。手で編集しない。
 // cp932 対応表: [開始index, 連続する文字列] の配列。
 // index = leadIdx*188 + trailIdx,  lead=0x81..0x9F,0xE0..0xFC / trail=0x40..0x7E,0x80..0xFC
 const SJIS_RUNS = [[0, "　、。，．・：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥‘’“”（）〔〕［］｛｝〈〉《》「」『』【】＋－±×÷＝≠＜＞≦≧∞∴♂♀°′″℃￥＄￠￡％＃＆＊＠§☆★○●◎◇◆□■△▲▽▼※〒→←↑↓〓"], [119, "∈∋⊆⊇⊂⊃∪∩"], [135, "∧∨￢⇒⇔∀∃"], [153, "∠⊥⌒∂∇≡≒≪≫√∽∝∵∫∬"], [175, "Å‰♯♭♪†‡¶"], [187, "◯"], [203, "０１２３４５６７８９"], [220, "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"], [252, "ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"], [282, "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをん"], [376, "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶ"], [470, "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"], [502, "αβγδεζηθικλμνξοπρστυφχψω"], [564, "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"], [612, "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"], [658, "─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂"], [1128, "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ"], [1159, "㍉㌔㌢㍍㌘㌧㌃㌶㍑㍗㌍㌦㌣㌫㍊㌻㎜㎝㎞㎎㎏㏄㎡"], [1190, "㍻〝〟№㏍℡㊤㊥㊦㊧㊨㈱㈲㈹㍾㍽㍼"], [1210, "∮∑"], [1215, "∟⊿"], [1410, "亜唖娃阿哀愛挨姶逢葵茜穐悪握渥旭葦芦鯵梓圧斡扱宛姐虻飴絢綾鮎或粟袷安庵按暗案闇鞍杏以伊位依偉囲夷委威尉惟意慰易椅為畏異移維緯胃萎衣謂違遺医井亥域育郁磯一壱溢逸稲茨芋鰯允印咽員因姻引飲淫胤蔭院陰隠韻吋右宇烏羽迂雨卯鵜窺丑碓臼渦嘘唄欝蔚鰻姥厩浦瓜閏噂云運雲荏餌叡営嬰影映曳栄永泳洩瑛盈穎頴英衛詠鋭液疫益駅悦謁越閲榎厭円園堰奄宴延怨掩援沿演炎焔煙燕猿縁艶苑薗遠鉛鴛塩於汚甥凹央奥往応押旺横欧殴王翁襖鴬鴎黄岡沖荻億屋憶臆桶牡乙俺卸恩温穏音下化仮何伽価佳加可嘉夏嫁家寡科暇果架歌河火珂禍禾稼箇花苛茄荷華菓蝦課嘩貨迦過霞蚊俄峨我牙画臥芽蛾賀雅餓駕介会解回塊壊廻快怪悔恢懐戒拐改魁晦械海灰界皆絵芥蟹開階貝凱劾外咳害崖慨概涯碍蓋街該鎧骸浬馨蛙垣柿蛎鈎劃嚇各廓拡撹格核殻獲確穫覚角赫較郭閣隔革学岳楽額顎掛笠樫橿梶鰍潟割喝恰括活渇滑葛褐轄且鰹叶椛樺鞄株兜竃蒲釜鎌噛鴨栢茅萱粥刈苅瓦乾侃冠寒刊勘勧巻喚堪姦完官寛干幹患感慣憾換敢柑桓棺款歓汗漢澗潅環甘監看竿管簡緩缶翰肝艦莞観諌貫還鑑間閑関陥韓館舘丸含岸巌玩癌眼岩翫贋雁頑顔願企伎危喜器基奇嬉寄岐希幾忌揮机旗既期棋棄機帰毅気汽畿祈季稀紀徽規記貴起軌輝飢騎鬼亀偽儀妓宜戯技擬欺犠疑祇義蟻誼議掬菊鞠吉吃喫桔橘詰砧杵黍却客脚虐逆丘久仇休及吸宮弓急救朽求汲泣灸球究窮笈級糾給旧牛去居巨拒拠挙渠虚許距鋸漁禦魚亨享京供侠僑兇競共凶協匡卿叫喬境峡強彊怯恐恭挟教橋況狂狭矯胸脅興蕎郷鏡響饗驚仰凝尭暁業局曲極玉桐粁僅勤均巾錦斤欣欽琴禁禽筋緊芹菌衿襟謹近金吟銀九倶句区狗玖矩苦躯駆駈駒具愚虞喰空偶寓遇隅串櫛釧屑屈掘窟沓靴轡窪熊隈粂栗繰桑鍬勲君薫訓群軍郡卦袈祁係傾刑兄啓圭珪型契形径恵慶慧憩掲携敬景桂渓畦稽系経継繋罫茎荊蛍計詣警軽頚鶏芸迎鯨劇戟撃激隙桁傑欠決潔穴結血訣月件倹倦健兼券剣喧圏堅嫌建憲懸拳捲検権牽犬献研硯絹県肩見謙賢軒遣鍵険顕験鹸元原厳幻弦減源玄現絃舷言諺限乎個古呼固姑孤己庫弧戸故枯湖狐糊袴股胡菰虎誇跨鈷雇顧鼓五互伍午呉吾娯後御悟梧檎瑚碁語誤護醐乞鯉交佼侯候倖光公功効勾厚口向后喉坑垢好孔孝宏工巧巷幸広庚康弘恒慌抗拘控攻昂晃更杭校梗構江洪浩港溝甲皇硬稿糠紅紘絞綱耕考肯肱腔膏航荒行衡講貢購郊酵鉱砿鋼閤降項香高鴻剛劫号合壕拷濠豪轟麹克刻告国穀酷鵠黒獄漉腰甑忽惚骨狛込此頃今困坤墾婚恨懇昏昆根梱混痕紺艮魂些佐叉唆嵯左差査沙瑳砂詐鎖裟坐座挫債催再最哉塞妻宰彩才採栽歳済災采犀砕砦祭斎細菜裁載際剤在材罪財冴坂阪堺榊肴咲崎埼碕鷺作削咋搾昨朔柵窄策索錯桜鮭笹匙冊刷察拶撮擦札殺薩雑皐鯖捌錆鮫皿晒三傘参山惨撒散桟燦珊産算纂蚕讃賛酸餐斬暫残仕仔伺使刺司史嗣四士始姉姿子屍市師志思指支孜斯施旨枝止死氏獅祉私糸紙紫肢脂至視詞詩試誌諮資賜雌飼歯事似侍児字寺慈持時次滋治爾璽痔磁示而耳自蒔辞汐鹿式識鴫竺軸宍雫七叱執失嫉室悉湿漆疾質実蔀篠偲柴芝屡蕊縞舎写射捨赦斜煮社紗者謝車遮蛇邪借勺尺杓灼爵酌釈錫若寂弱惹主取守手朱殊狩珠種腫趣酒首儒受呪寿授樹綬需囚収周宗就州修愁拾洲秀秋終繍習臭舟蒐衆襲讐蹴輯週酋酬集醜什住充十従戎柔汁渋獣縦重銃叔夙宿淑祝縮粛塾熟出術述俊峻春瞬竣舜駿准循旬楯殉淳準潤盾純巡遵醇順処初所暑曙渚庶緒署書薯藷諸助叙女序徐恕鋤除傷償勝匠升召哨商唱嘗奨妾娼宵将小少尚庄床廠彰承抄招掌捷昇昌昭晶松梢樟樵沼消渉湘焼焦照症省硝礁祥称章笑粧紹肖菖蒋蕉衝裳訟証詔詳象賞醤鉦鍾鐘障鞘上丈丞乗冗剰城場壌嬢常情擾条杖浄状畳穣蒸譲醸錠嘱埴飾拭植殖燭織職色触食蝕辱尻伸信侵唇娠寝審心慎振新晋森榛浸深申疹真神秦紳臣芯薪親診身辛進針震人仁刃塵壬尋甚尽腎訊迅陣靭笥諏須酢図厨逗吹垂帥推水炊睡粋翠衰遂酔錐錘随瑞髄崇嵩数枢趨雛据杉椙菅頗雀裾澄摺寸世瀬畝是凄制勢姓征性成政整星晴棲栖正清牲生盛精聖声製西誠誓請逝醒青静斉税脆隻席惜戚斥昔析石積籍績脊責赤跡蹟碩切拙接摂折設窃節説雪絶舌蝉仙先千占宣専尖川戦扇撰栓栴泉浅洗染潜煎煽旋穿箭線繊羨腺舛船薦詮賎践選遷銭銑閃鮮前善漸然全禅繕膳糎噌塑岨措曾曽楚狙疏疎礎祖租粗素組蘇訴阻遡鼠僧創双叢倉喪壮奏爽宋層匝惣想捜掃挿掻操早曹巣槍槽漕燥争痩相窓糟総綜聡草荘葬蒼藻装走送遭鎗霜騒像増憎臓蔵贈造促側則即息捉束測足速俗属賊族続卒袖其揃存孫尊損村遜他多太汰詑唾堕妥惰打柁舵楕陀駄騨体堆対耐岱帯待怠態戴替泰滞胎腿苔袋貸退逮隊黛鯛代台大第醍題鷹滝瀧卓啄宅托択拓沢濯琢託鐸濁諾茸凧蛸只叩但達辰奪脱巽竪辿棚谷狸鱈樽誰丹単嘆坦担探旦歎淡湛炭短端箪綻耽胆蛋誕鍛団壇弾断暖檀段男談値知地弛恥智池痴稚置致蜘遅馳築畜竹筑蓄逐秩窒茶嫡着中仲宙忠抽昼柱注虫衷註酎鋳駐樗瀦猪苧著貯丁兆凋喋寵帖帳庁弔張彫徴懲挑暢朝潮牒町眺聴脹腸蝶調諜超跳銚長頂鳥勅捗直朕沈珍賃鎮陳津墜椎槌追鎚痛通塚栂掴槻佃漬柘辻蔦綴鍔椿潰坪壷嬬紬爪吊釣鶴亭低停偵剃貞呈堤定帝底庭廷弟悌抵挺提梯汀碇禎程締艇訂諦蹄逓邸鄭釘鼎泥摘擢敵滴的笛適鏑溺哲徹撤轍迭鉄典填天展店添纏甜貼転顛点伝殿澱田電兎吐堵塗妬屠徒斗杜渡登菟賭途都鍍砥砺努度土奴怒倒党冬凍刀唐塔塘套宕島嶋悼投搭東桃梼棟盗淘湯涛灯燈当痘祷等答筒糖統到董蕩藤討謄豆踏逃透鐙陶頭騰闘働動同堂導憧撞洞瞳童胴萄道銅峠鴇匿得徳涜特督禿篤毒独読栃橡凸突椴届鳶苫寅酉瀞噸屯惇敦沌豚遁頓呑曇鈍奈那内乍凪薙謎灘捺鍋楢馴縄畷南楠軟難汝二尼弐迩匂賑肉虹廿日乳入如尿韮任妊忍認濡禰祢寧葱猫熱年念捻撚燃粘乃廼之埜嚢悩濃納能脳膿農覗蚤巴把播覇杷波派琶破婆罵芭馬俳廃拝排敗杯盃牌背肺輩配倍培媒梅楳煤狽買売賠陪這蝿秤矧萩伯剥博拍柏泊白箔粕舶薄迫曝漠爆縛莫駁麦函箱硲箸肇筈櫨幡肌畑畠八鉢溌発醗髪伐罰抜筏閥鳩噺塙蛤隼伴判半反叛帆搬斑板氾汎版犯班畔繁般藩販範釆煩頒飯挽晩番盤磐蕃蛮匪卑否妃庇彼悲扉批披斐比泌疲皮碑秘緋罷肥被誹費避非飛樋簸備尾微枇毘琵眉美鼻柊稗匹疋髭彦膝菱肘弼必畢筆逼桧姫媛紐百謬俵彪標氷漂瓢票表評豹廟描病秒苗錨鋲蒜蛭鰭品彬斌浜瀕貧賓頻敏瓶不付埠夫婦富冨布府怖扶敷斧普浮父符腐膚芙譜負賦赴阜附侮撫武舞葡蕪部封楓風葺蕗伏副復幅服福腹複覆淵弗払沸仏物鮒分吻噴墳憤扮焚奮粉糞紛雰文聞丙併兵塀幣平弊柄並蔽閉陛米頁僻壁癖碧別瞥蔑箆偏変片篇編辺返遍便勉娩弁鞭保舗鋪圃捕歩甫補輔穂募墓慕戊暮母簿菩倣俸包呆報奉宝峰峯崩庖抱捧放方朋法泡烹砲縫胞芳萌蓬蜂褒訪豊邦鋒飽鳳鵬乏亡傍剖坊妨帽忘忙房暴望某棒冒紡肪膨謀貌貿鉾防吠頬北僕卜墨撲朴牧睦穆釦勃没殆堀幌奔本翻凡盆摩磨魔麻埋妹昧枚毎哩槙幕膜枕鮪柾鱒桝亦俣又抹末沫迄侭繭麿万慢満漫蔓味未魅巳箕岬密蜜湊蓑稔脈妙粍民眠務夢無牟矛霧鵡椋婿娘冥名命明盟迷銘鳴姪牝滅免棉綿緬面麺摸模茂妄孟毛猛盲網耗蒙儲木黙目杢勿餅尤戻籾貰問悶紋門匁也冶夜爺耶野弥矢厄役約薬訳躍靖柳薮鑓愉愈油癒諭輸唯佑優勇友宥幽悠憂揖有柚湧涌猶猷由祐裕誘遊邑郵雄融夕予余与誉輿預傭幼妖容庸揚揺擁曜楊様洋溶熔用窯羊耀葉蓉要謡踊遥陽養慾抑欲沃浴翌翼淀羅螺裸来莱頼雷洛絡落酪乱卵嵐欄濫藍蘭覧利吏履李梨理璃痢裏裡里離陸律率立葎掠略劉流溜琉留硫粒隆竜龍侶慮旅虜了亮僚両凌寮料梁涼猟療瞭稜糧良諒遼量陵領力緑倫厘林淋燐琳臨輪隣鱗麟瑠塁涙累類令伶例冷励嶺怜玲礼苓鈴隷零霊麗齢暦歴列劣烈裂廉恋憐漣煉簾練聯蓮連錬呂魯櫓炉賂路露労婁廊弄朗楼榔浪漏牢狼篭老聾蝋郎六麓禄肋録論倭和話歪賄脇惑枠鷲亙亘鰐詫藁蕨椀湾碗腕"], [4418, "弌丐丕个丱丶丼丿乂乖乘亂亅豫亊舒弍于亞亟亠亢亰亳亶从仍仄仆仂仗仞仭仟价伉佚估佛佝佗佇佶侈侏侘佻佩佰侑佯來侖儘俔俟俎俘俛俑俚俐俤俥倚倨倔倪倥倅伜俶倡倩倬俾俯們倆偃假會偕偐偈做偖偬偸傀傚傅傴傲僉僊傳僂僖僞僥僭僣僮價僵儉儁儂儖儕儔儚儡儺儷儼儻儿兀兒兌兔兢竸兩兪兮冀冂囘册冉冏冑冓冕冖冤冦冢冩冪冫决冱冲冰况冽凅凉凛几處凩凭凰凵凾刄刋刔刎刧刪刮刳刹剏剄剋剌剞剔剪剴剩剳剿剽劍劔劒剱劈劑辨辧劬劭劼劵勁勍勗勞勣勦飭勠勳勵勸勹匆匈甸匍匐匏匕匚匣匯匱匳匸區卆卅丗卉卍凖卞卩卮夘卻卷厂厖厠厦厥厮厰厶參簒雙叟曼燮叮叨叭叺吁吽呀听吭吼吮吶吩吝呎咏呵咎呟呱呷呰咒呻咀呶咄咐咆哇咢咸咥咬哄哈咨咫哂咤咾咼哘哥哦唏唔哽哮哭哺哢唹啀啣啌售啜啅啖啗唸唳啝喙喀咯喊喟啻啾喘喞單啼喃喩喇喨嗚嗅嗟嗄嗜嗤嗔嘔嗷嘖嗾嗽嘛嗹噎噐營嘴嘶嘲嘸噫噤嘯噬噪嚆嚀嚊嚠嚔嚏嚥嚮嚶嚴囂嚼囁囃囀囈囎囑囓囗囮囹圀囿圄圉圈國圍圓團圖嗇圜圦圷圸坎圻址坏坩埀垈坡坿垉垓垠垳垤垪垰埃埆埔埒埓堊埖埣堋堙堝塲堡塢塋塰毀塒堽塹墅墹墟墫墺壞墻墸墮壅壓壑壗壙壘壥壜壤壟壯壺壹壻壼壽夂夊夐夛梦夥夬夭夲夸夾竒奕奐奎奚奘奢奠奧奬奩奸妁妝佞侫妣妲姆姨姜妍姙姚娥娟娑娜娉娚婀婬婉娵娶婢婪媚媼媾嫋嫂媽嫣嫗嫦嫩嫖嫺嫻嬌嬋嬖嬲嫐嬪嬶嬾孃孅孀孑孕孚孛孥孩孰孳孵學斈孺宀它宦宸寃寇寉寔寐寤實寢寞寥寫寰寶寳尅將專對尓尠尢尨尸尹屁屆屎屓屐屏孱屬屮乢屶屹岌岑岔妛岫岻岶岼岷峅岾峇峙峩峽峺峭嶌峪崋崕崗嵜崟崛崑崔崢崚崙崘嵌嵒嵎嵋嵬嵳嵶嶇嶄嶂嶢嶝嶬嶮嶽嶐嶷嶼巉巍巓巒巖巛巫已巵帋帚帙帑帛帶帷幄幃幀幎幗幔幟幢幤幇幵并幺麼广庠廁廂廈廐廏廖廣廝廚廛廢廡廨廩廬廱廳廰廴廸廾弃弉彝彜弋弑弖弩弭弸彁彈彌彎弯彑彖彗彙彡彭彳彷徃徂彿徊很徑徇從徙徘徠徨徭徼忖忻忤忸忱忝悳忿怡恠怙怐怩怎怱怛怕怫怦怏怺恚恁恪恷恟恊恆恍恣恃恤恂恬恫恙悁悍惧悃悚悄悛悖悗悒悧悋惡悸惠惓悴忰悽惆悵惘慍愕愆惶惷愀惴惺愃愡惻惱愍愎慇愾愨愧慊愿愼愬愴愽慂慄慳慷慘慙慚慫慴慯慥慱慟慝慓慵憙憖憇憬憔憚憊憑憫憮懌懊應懷懈懃懆憺懋罹懍懦懣懶懺懴懿懽懼懾戀戈戉戍戌戔戛戞戡截戮戰戲戳扁扎扞扣扛扠扨扼抂抉找抒抓抖拔抃抔拗拑抻拏拿拆擔拈拜拌拊拂拇抛拉挌拮拱挧挂挈拯拵捐挾捍搜捏掖掎掀掫捶掣掏掉掟掵捫捩掾揩揀揆揣揉插揶揄搖搴搆搓搦搶攝搗搨搏摧摯摶摎攪撕撓撥撩撈撼據擒擅擇撻擘擂擱擧舉擠擡抬擣擯攬擶擴擲擺攀擽攘攜攅攤攣攫攴攵攷收攸畋效敖敕敍敘敞敝敲數斂斃變斛斟斫斷旃旆旁旄旌旒旛旙无旡旱杲昊昃旻杳昵昶昴昜晏晄晉晁晞晝晤晧晨晟晢晰暃暈暎暉暄暘暝曁暹曉暾暼曄暸曖曚曠昿曦曩曰曵曷朏朖朞朦朧霸朮朿朶杁朸朷杆杞杠杙杣杤枉杰枩杼杪枌枋枦枡枅枷柯枴柬枳柩枸柤柞柝柢柮枹柎柆柧檜栞框栩桀桍栲桎梳栫桙档桷桿梟梏梭梔條梛梃檮梹桴梵梠梺椏梍桾椁棊椈棘椢椦棡椌棍棔棧棕椶椒椄棗棣椥棹棠棯椨椪椚椣椡棆楹楷楜楸楫楔楾楮椹楴椽楙椰楡楞楝榁楪榲榮槐榿槁槓榾槎寨槊槝榻槃榧樮榑榠榜榕榴槞槨樂樛槿權槹槲槧樅榱樞槭樔槫樊樒櫁樣樓橄樌橲樶橸橇橢橙橦橈樸樢檐檍檠檄檢檣檗蘗檻櫃櫂檸檳檬櫞櫑櫟檪櫚櫪櫻欅蘖櫺欒欖鬱欟欸欷盜欹飮歇歃歉歐歙歔歛歟歡歸歹歿殀殄殃殍殘殕殞殤殪殫殯殲殱殳殷殼毆毋毓毟毬毫毳毯麾氈氓气氛氤氣汞汕汢汪沂沍沚沁沛汾汨汳沒沐泄泱泓沽泗泅泝沮沱沾沺泛泯泙泪洟衍洶洫洽洸洙洵洳洒洌浣涓浤浚浹浙涎涕濤涅淹渕渊涵淇淦涸淆淬淞淌淨淒淅淺淙淤淕淪淮渭湮渮渙湲湟渾渣湫渫湶湍渟湃渺湎渤滿渝游溂溪溘滉溷滓溽溯滄溲滔滕溏溥滂溟潁漑灌滬滸滾漿滲漱滯漲滌漾漓滷澆潺潸澁澀潯潛濳潭澂潼潘澎澑濂潦澳澣澡澤澹濆澪濟濕濬濔濘濱濮濛瀉瀋濺瀑瀁瀏濾瀛瀚潴瀝瀘瀟瀰瀾瀲灑灣炙炒炯烱炬炸炳炮烟烋烝烙焉烽焜焙煥煕熈煦煢煌煖煬熏燻熄熕熨熬燗熹熾燒燉燔燎燠燬燧燵燼燹燿爍爐爛爨爭爬爰爲爻爼爿牀牆牋牘牴牾犂犁犇犒犖犢犧犹犲狃狆狄狎狒狢狠狡狹狷倏猗猊猜猖猝猴猯猩猥猾獎獏默獗獪獨獰獸獵獻獺珈玳珎玻珀珥珮珞璢琅瑯琥珸琲琺瑕琿瑟瑙瑁瑜瑩瑰瑣瑪瑶瑾璋璞璧瓊瓏瓔珱瓠瓣瓧瓩瓮瓲瓰瓱瓸瓷甄甃甅甌甎甍甕甓甞甦甬甼畄畍畊畉畛畆畚畩畤畧畫畭畸當疆疇畴疊疉疂疔疚疝疥疣痂疳痃疵疽疸疼疱痍痊痒痙痣痞痾痿痼瘁痰痺痲痳瘋瘍瘉瘟瘧瘠瘡瘢瘤瘴瘰瘻癇癈癆癜癘癡癢癨癩癪癧癬癰癲癶癸發皀皃皈皋皎皖皓皙皚皰皴皸皹皺盂盍盖盒盞盡盥盧盪蘯盻眈眇眄眩眤眞眥眦眛眷眸睇睚睨睫睛睥睿睾睹瞎瞋瞑瞠瞞瞰瞶瞹瞿瞼瞽瞻矇矍矗矚矜矣矮矼砌砒礦砠礪硅碎硴碆硼碚碌碣碵碪碯磑磆磋磔碾碼磅磊磬磧磚磽磴礇礒礑礙礬礫祀祠祗祟祚祕祓祺祿禊禝禧齋禪禮禳禹禺秉秕秧秬秡秣稈稍稘稙稠稟禀稱稻稾稷穃穗穉穡穢穩龝穰穹穽窈窗窕窘窖窩竈窰窶竅竄窿邃竇竊竍竏竕竓站竚竝竡竢竦竭竰笂笏笊笆笳笘笙笞笵笨笶筐筺笄筍笋筌筅筵筥筴筧筰筱筬筮箝箘箟箍箜箚箋箒箏筝箙篋篁篌篏箴篆篝篩簑簔篦篥籠簀簇簓篳篷簗簍篶簣簧簪簟簷簫簽籌籃籔籏籀籐籘籟籤籖籥籬籵粃粐粤粭粢粫粡粨粳粲粱粮粹粽糀糅糂糘糒糜糢鬻糯糲糴糶糺紆紂紜紕紊絅絋紮紲紿紵絆絳絖絎絲絨絮絏絣經綉絛綏絽綛綺綮綣綵緇綽綫總綢綯緜綸綟綰緘緝緤緞緻緲緡縅縊縣縡縒縱縟縉縋縢繆繦縻縵縹繃縷縲縺繧繝繖繞繙繚繹繪繩繼繻纃緕繽辮繿纈纉續纒纐纓纔纖纎纛纜缸缺罅罌罍罎罐网罕罔罘罟罠罨罩罧罸羂羆羃羈羇羌羔羞羝羚羣羯羲羹羮羶羸譱翅翆翊翕翔翡翦翩翳翹飜耆耄耋耒耘耙耜耡耨耿耻聊聆聒聘聚聟聢聨聳聲聰聶聹聽聿肄肆肅肛肓肚肭冐肬胛胥胙胝胄胚胖脉胯胱脛脩脣脯腋隋腆脾腓腑胼腱腮腥腦腴膃膈膊膀膂膠膕膤膣腟膓膩膰膵膾膸膽臀臂膺臉臍臑臙臘臈臚臟臠臧臺臻臾舁舂舅與舊舍舐舖舩舫舸舳艀艙艘艝艚艟艤艢艨艪艫舮艱艷艸艾芍芒芫芟芻芬苡苣苟苒苴苳苺莓范苻苹苞茆苜茉苙茵茴茖茲茱荀茹荐荅茯茫茗茘莅莚莪莟莢莖茣莎莇莊荼莵荳荵莠莉莨菴萓菫菎菽萃菘萋菁菷萇菠菲萍萢萠莽萸蔆菻葭萪萼蕚蒄葷葫蒭葮蒂葩葆萬葯葹萵蓊葢蒹蒿蒟蓙蓍蒻蓚蓐蓁蓆蓖蒡蔡蓿蓴蔗蔘蔬蔟蔕蔔蓼蕀蕣蕘蕈蕁蘂蕋蕕薀薤薈薑薊薨蕭薔薛藪薇薜蕷蕾薐藉薺藏薹藐藕藝藥藜藹蘊蘓蘋藾藺蘆蘢蘚蘰蘿虍乕虔號虧虱蚓蚣蚩蚪蚋蚌蚶蚯蛄蛆蚰蛉蠣蚫蛔蛞蛩蛬蛟蛛蛯蜒蜆蜈蜀蜃蛻蜑蜉蜍蛹蜊蜴蜿蜷蜻蜥蜩蜚蝠蝟蝸蝌蝎蝴蝗蝨蝮蝙蝓蝣蝪蠅螢螟螂螯蟋螽蟀蟐雖螫蟄螳蟇蟆螻蟯蟲蟠蠏蠍蟾蟶蟷蠎蟒蠑蠖蠕蠢蠡蠱蠶蠹蠧蠻衄衂衒衙衞衢衫袁衾袞衵衽袵衲袂袗袒袮袙袢袍袤袰袿袱裃裄裔裘裙裝裹褂裼裴裨裲褄褌褊褓襃褞褥褪褫襁襄褻褶褸襌褝襠襞襦襤襭襪襯襴襷襾覃覈覊覓覘覡覩覦覬覯覲覺覽覿觀觚觜觝觧觴觸訃訖訐訌訛訝訥訶詁詛詒詆詈詼詭詬詢誅誂誄誨誡誑誥誦誚誣諄諍諂諚諫諳諧諤諱謔諠諢諷諞諛謌謇謚諡謖謐謗謠謳鞫謦謫謾謨譁譌譏譎證譖譛譚譫譟譬譯譴譽讀讌讎讒讓讖讙讚谺豁谿豈豌豎豐豕豢豬豸豺貂貉貅貊貍貎貔豼貘戝貭貪貽貲貳貮貶賈賁賤賣賚賽賺賻贄贅贊贇贏贍贐齎贓賍贔贖赧赭赱赳趁趙跂趾趺跏跚跖跌跛跋跪跫跟跣跼踈踉跿踝踞踐踟蹂踵踰踴蹊蹇蹉蹌蹐蹈蹙蹤蹠踪蹣蹕蹶蹲蹼躁躇躅躄躋躊躓躑躔躙躪躡躬躰軆躱躾軅軈軋軛軣軼軻軫軾輊輅輕輒輙輓輜輟輛輌輦輳輻輹轅轂輾轌轉轆轎轗轜轢轣轤辜辟辣辭辯辷迚迥迢迪迯邇迴逅迹迺逑逕逡逍逞逖逋逧逶逵逹迸遏遐遑遒逎遉逾遖遘遞遨遯遶隨遲邂遽邁邀邊邉邏邨邯邱邵郢郤扈郛鄂鄒鄙鄲鄰酊酖酘酣酥酩酳酲醋醉醂醢醫醯醪醵醴醺釀釁釉釋釐釖釟釡釛釼釵釶鈞釿鈔鈬鈕鈑鉞鉗鉅鉉鉤鉈銕鈿鉋鉐銜銖銓銛鉚鋏銹銷鋩錏鋺鍄錮錙錢錚錣錺錵錻鍜鍠鍼鍮鍖鎰鎬鎭鎔鎹鏖鏗鏨鏥鏘鏃鏝鏐鏈鏤鐚鐔鐓鐃鐇鐐鐶鐫鐵鐡鐺鑁鑒鑄鑛鑠鑢鑞鑪鈩鑰鑵鑷鑽鑚鑼鑾钁鑿閂閇閊閔閖閘閙閠閨閧閭閼閻閹閾闊濶闃闍闌闕闔闖關闡闥闢阡阨阮阯陂陌陏陋陷陜陞陝陟陦陲陬隍隘隕隗險隧隱隲隰隴隶隸隹雎雋雉雍襍雜霍雕雹霄霆霈霓霎霑霏霖霙霤霪霰霹霽霾靄靆靈靂靉靜靠靤靦靨勒靫靱靹鞅靼鞁靺鞆鞋鞏鞐鞜鞨鞦鞣鞳鞴韃韆韈韋韜韭齏韲竟韶韵頏頌頸頤頡頷頽顆顏顋顫顯顰顱顴顳颪颯颱颶飄飃飆飩飫餃餉餒餔餘餡餝餞餤餠餬餮餽餾饂饉饅饐饋饑饒饌饕馗馘馥馭馮馼駟駛駝駘駑駭駮駱駲駻駸騁騏騅駢騙騫騷驅驂驀驃騾驕驍驛驗驟驢驥驤驩驫驪骭骰骼髀髏髑髓體髞髟髢髣髦髯髫髮髴髱髷髻鬆鬘鬚鬟鬢鬣鬥鬧鬨鬩鬪鬮鬯鬲魄魃魏魍魎魑魘魴鮓鮃鮑鮖鮗鮟鮠鮨鮴鯀鯊鮹鯆鯏鯑鯒鯣鯢鯤鯔鯡鰺鯲鯱鯰鰕鰔鰉鰓鰌鰆鰈鰒鰊鰄鰮鰛鰥鰤鰡鰰鱇鰲鱆鰾鱚鱠鱧鱶鱸鳧鳬鳰鴉鴈鳫鴃鴆鴪鴦鶯鴣鴟鵄鴕鴒鵁鴿鴾鵆鵈鵝鵞鵤鵑鵐鵙鵲鶉鶇鶫鵯鵺鶚鶤鶩鶲鷄鷁鶻鶸鶺鷆鷏鷂鷙鷓鷸鷦鷭鷯鷽鸚鸛鸞鹵鹹鹽麁麈麋麌麒麕麑麝麥麩麸麪麭靡黌黎黏黐黔黜點黝黠黥黨黯黴黶黷黹黻黼黽鼇鼈皷鼕鼡鼬鼾齊齒齔齣齟齠齡齦齧齬齪齷齲齶龕龜龠堯槇遙瑤凜熙"], [8272, "纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑"], [8634, "ⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹ"], [8645, "￤＇＂"], [8836, ""]];
@@ -433,10 +168,7 @@ const SJIS_SUBS = {"¥": "\\", "–": "-", "—": "―", "•": "・"};
 const RS_BLOCKS = [[[[1, 26, 19]], [[1, 26, 16]], [[1, 26, 13]], [[1, 26, 9]]], [[[1, 44, 34]], [[1, 44, 28]], [[1, 44, 22]], [[1, 44, 16]]], [[[1, 70, 55]], [[1, 70, 44]], [[2, 35, 17]], [[2, 35, 13]]], [[[1, 100, 80]], [[2, 50, 32]], [[2, 50, 24]], [[4, 25, 9]]], [[[1, 134, 108]], [[2, 67, 43]], [[2, 33, 15], [2, 34, 16]], [[2, 33, 11], [2, 34, 12]]], [[[2, 86, 68]], [[4, 43, 27]], [[4, 43, 19]], [[4, 43, 15]]], [[[2, 98, 78]], [[4, 49, 31]], [[2, 32, 14], [4, 33, 15]], [[4, 39, 13], [1, 40, 14]]], [[[2, 121, 97]], [[2, 60, 38], [2, 61, 39]], [[4, 40, 18], [2, 41, 19]], [[4, 40, 14], [2, 41, 15]]], [[[2, 146, 116]], [[3, 58, 36], [2, 59, 37]], [[4, 36, 16], [4, 37, 17]], [[4, 36, 12], [4, 37, 13]]], [[[2, 86, 68], [2, 87, 69]], [[4, 69, 43], [1, 70, 44]], [[6, 43, 19], [2, 44, 20]], [[6, 43, 15], [2, 44, 16]]], [[[4, 101, 81]], [[1, 80, 50], [4, 81, 51]], [[4, 50, 22], [4, 51, 23]], [[3, 36, 12], [8, 37, 13]]], [[[2, 116, 92], [2, 117, 93]], [[6, 58, 36], [2, 59, 37]], [[4, 46, 20], [6, 47, 21]], [[7, 42, 14], [4, 43, 15]]], [[[4, 133, 107]], [[8, 59, 37], [1, 60, 38]], [[8, 44, 20], [4, 45, 21]], [[12, 33, 11], [4, 34, 12]]], [[[3, 145, 115], [1, 146, 116]], [[4, 64, 40], [5, 65, 41]], [[11, 36, 16], [5, 37, 17]], [[11, 36, 12], [5, 37, 13]]], [[[5, 109, 87], [1, 110, 88]], [[5, 65, 41], [5, 66, 42]], [[5, 54, 24], [7, 55, 25]], [[11, 36, 12], [7, 37, 13]]], [[[5, 122, 98], [1, 123, 99]], [[7, 73, 45], [3, 74, 46]], [[15, 43, 19], [2, 44, 20]], [[3, 45, 15], [13, 46, 16]]], [[[1, 135, 107], [5, 136, 108]], [[10, 74, 46], [1, 75, 47]], [[1, 50, 22], [15, 51, 23]], [[2, 42, 14], [17, 43, 15]]], [[[5, 150, 120], [1, 151, 121]], [[9, 69, 43], [4, 70, 44]], [[17, 50, 22], [1, 51, 23]], [[2, 42, 14], [19, 43, 15]]], [[[3, 141, 113], [4, 142, 114]], [[3, 70, 44], [11, 71, 45]], [[17, 47, 21], [4, 48, 22]], [[9, 39, 13], [16, 40, 14]]], [[[3, 135, 107], [5, 136, 108]], [[3, 67, 41], [13, 68, 42]], [[15, 54, 24], [5, 55, 25]], [[15, 43, 15], [10, 44, 16]]], [[[4, 144, 116], [4, 145, 117]], [[17, 68, 42]], [[17, 50, 22], [6, 51, 23]], [[19, 46, 16], [6, 47, 17]]], [[[2, 139, 111], [7, 140, 112]], [[17, 74, 46]], [[7, 54, 24], [16, 55, 25]], [[34, 37, 13]]], [[[4, 151, 121], [5, 152, 122]], [[4, 75, 47], [14, 76, 48]], [[11, 54, 24], [14, 55, 25]], [[16, 45, 15], [14, 46, 16]]], [[[6, 147, 117], [4, 148, 118]], [[6, 73, 45], [14, 74, 46]], [[11, 54, 24], [16, 55, 25]], [[30, 46, 16], [2, 47, 17]]], [[[8, 132, 106], [4, 133, 107]], [[8, 75, 47], [13, 76, 48]], [[7, 54, 24], [22, 55, 25]], [[22, 45, 15], [13, 46, 16]]], [[[10, 142, 114], [2, 143, 115]], [[19, 74, 46], [4, 75, 47]], [[28, 50, 22], [6, 51, 23]], [[33, 46, 16], [4, 47, 17]]], [[[8, 152, 122], [4, 153, 123]], [[22, 73, 45], [3, 74, 46]], [[8, 53, 23], [26, 54, 24]], [[12, 45, 15], [28, 46, 16]]], [[[3, 147, 117], [10, 148, 118]], [[3, 73, 45], [23, 74, 46]], [[4, 54, 24], [31, 55, 25]], [[11, 45, 15], [31, 46, 16]]], [[[7, 146, 116], [7, 147, 117]], [[21, 73, 45], [7, 74, 46]], [[1, 53, 23], [37, 54, 24]], [[19, 45, 15], [26, 46, 16]]], [[[5, 145, 115], [10, 146, 116]], [[19, 75, 47], [10, 76, 48]], [[15, 54, 24], [25, 55, 25]], [[23, 45, 15], [25, 46, 16]]], [[[13, 145, 115], [3, 146, 116]], [[2, 74, 46], [29, 75, 47]], [[42, 54, 24], [1, 55, 25]], [[23, 45, 15], [28, 46, 16]]], [[[17, 145, 115]], [[10, 74, 46], [23, 75, 47]], [[10, 54, 24], [35, 55, 25]], [[19, 45, 15], [35, 46, 16]]], [[[17, 145, 115], [1, 146, 116]], [[14, 74, 46], [21, 75, 47]], [[29, 54, 24], [19, 55, 25]], [[11, 45, 15], [46, 46, 16]]], [[[13, 145, 115], [6, 146, 116]], [[14, 74, 46], [23, 75, 47]], [[44, 54, 24], [7, 55, 25]], [[59, 46, 16], [1, 47, 17]]], [[[12, 151, 121], [7, 152, 122]], [[12, 75, 47], [26, 76, 48]], [[39, 54, 24], [14, 55, 25]], [[22, 45, 15], [41, 46, 16]]], [[[6, 151, 121], [14, 152, 122]], [[6, 75, 47], [34, 76, 48]], [[46, 54, 24], [10, 55, 25]], [[2, 45, 15], [64, 46, 16]]], [[[17, 152, 122], [4, 153, 123]], [[29, 74, 46], [14, 75, 47]], [[49, 54, 24], [10, 55, 25]], [[24, 45, 15], [46, 46, 16]]], [[[4, 152, 122], [18, 153, 123]], [[13, 74, 46], [32, 75, 47]], [[48, 54, 24], [14, 55, 25]], [[42, 45, 15], [32, 46, 16]]], [[[20, 147, 117], [4, 148, 118]], [[40, 75, 47], [7, 76, 48]], [[43, 54, 24], [22, 55, 25]], [[10, 45, 15], [67, 46, 16]]], [[[19, 148, 118], [6, 149, 119]], [[18, 75, 47], [31, 76, 48]], [[34, 54, 24], [34, 55, 25]], [[20, 45, 15], [61, 46, 16]]]];
 // python-qrcode の PATTERN_POSITION_TABLE より
 const ALIGN_POS = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50], [6, 30, 54], [6, 32, 58], [6, 34, 62], [6, 26, 46, 66], [6, 26, 48, 70], [6, 26, 50, 74], [6, 30, 54, 78], [6, 30, 56, 82], [6, 30, 58, 86], [6, 34, 62, 90], [6, 28, 50, 72, 94], [6, 26, 50, 74, 98], [6, 30, 54, 78, 102], [6, 28, 54, 80, 106], [6, 32, 58, 84, 110], [6, 30, 58, 86, 114], [6, 34, 62, 90, 118], [6, 26, 50, 74, 98, 122], [6, 30, 54, 78, 102, 126], [6, 26, 52, 78, 104, 130], [6, 30, 56, 82, 108, 134], [6, 34, 60, 86, 112, 138], [6, 30, 58, 86, 114, 142], [6, 34, 62, 90, 118, 146], [6, 30, 54, 78, 102, 126, 150], [6, 24, 50, 76, 102, 128, 154], [6, 28, 54, 80, 106, 132, 158], [6, 32, 58, 84, 110, 136, 162], [6, 26, 54, 82, 110, 138, 166], [6, 30, 58, 86, 114, 142, 170]];
-
-</script>
-<script>
-/* ===========================================================
+</script><script>/* ===========================================================
    Shift-JIS(cp932) エンコーダ + QRコード生成器（依存ライブラリなし）
    qrdata.js（SJIS_RUNS / SJIS_ALIAS / SJIS_SUBS / RS_BLOCKS / ALIGN_POS）を先に読むこと。
    =========================================================== */
@@ -897,10 +629,7 @@ function maxBytes(version, ec) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { encodeSJIS, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
 }
-
-</script>
-<script>
-/* 4フォーム共通の固定選択肢と、英語表示から日本語QR値への対応。
+</script><script>/* 4フォーム共通の固定選択肢と、英語表示から日本語QR値への対応。
  * HTML側には選択肢を書き写さず、必ずこの定義から画面を組み立てる。 */
 (function (root) {
   'use strict';
@@ -979,369 +708,534 @@ if (typeof module !== 'undefined' && module.exports) {
   root.FORM_CHOICES = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
+</script><script>/* 成人英語版・小児2言語版（/en/ /ped/ /ped/en/）の共通ロジック。
+ *
+ * 画面は HTML に書かず、この中で組み立てて `#app` に流し込む。
+ * ★固定選択肢は必ず choices.js（FORM_CHOICES）を参照すること。
+ *   ページごとに選択肢を書き写すと、日本語版と英語版でカルテに入る文字列が
+ *   食い違う。しかも画面を見ても分からない形でずれる。
+ *
+ * 成人日本語版（/）だけは別物で src/template.html に書いてある。
+ * 院内の紙3枚に合わせた作りで和暦入力も持つため、共通化していない。
+ * ただし**QRに入る文字列は揃える**こと（項目名・区切り・ヘッダ）。
+ */
+(function () {
+  'use strict';
 
-</script>
-<script>
-/* ================= 画面側 ================= */
-const $ = (id) => document.getElementById(id);
+  const C = FORM_CHOICES;
+  const app = document.getElementById('app');
+  const mode = app.dataset.mode;   // 'adult' | 'pediatric'
+  const lang = app.dataset.lang;   // 'ja' | 'en'
+  const en = lang === 'en';
 
-/* ---- 選択肢の定義 ---- */
+  const $ = (id) => document.getElementById(id);
 
-const choiceValues = (name) => FORM_CHOICES.choices(name).map((x) => x.value);
-const INSURANCE = choiceValues('insurance');
+  /* 画面表示の言語を選ぶ。QRに入る文字列には使わない（あちらは常に日本語）。 */
+  const t = (ja, english) => en ? english : ja;
 
-const G_SYMPT = choiceValues('gSympt');
-const G_SITE = choiceValues('gSite');
-const G_HX = choiceValues('gHx');
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
-const N_SYMPT = choiceValues('nSympt');
-const N_INFECT = choiceValues('nInfect');
-const N_HX = choiceValues('nHx');
+  /* ---- 画面部品 ----
+     value は choices.js の値（＝日本語。QRにそのまま載る）、
+     表示ラベルだけを lang で切り替える。 */
 
-/* チップは「商品名＋小さく一般名」。一般名を持たない項目（当てはまるものはない等）は
-   副題を空にする。空にしないと同じ文字が2行並ぶ。 */
-const ANTICOAG = FORM_CHOICES.choices('anticoag').map((x) => {
-  const m = x.ja.match(/^(.+?)（(.+)）$/);
-  return [x.value, m ? m[2] : ''];
-});
+  const opts = (set, blank) => (blank ? '<option value="">' + t('—', 'Select') + '</option>' : '') +
+    C.choices(set).map((x) => `<option value="${esc(x.value)}">${esc(C.label(x, lang))}</option>`).join('');
 
-const ONSET = FORM_CHOICES.choices('onset').map((x) => [x.value, x.ja]);
-const MEAL = FORM_CHOICES.choices('meal').map((x) => [x.value, x.ja]);
+  const checks = (set, name) => `<div class="chips">${C.choices(set).map((x) =>
+    `<label class="chip"><input type="checkbox" name="${name}" value="${esc(x.value)}"><span>${esc(C.label(x, lang))}</span></label>`).join('')}</div>`;
 
-const SEP_CHAR = { nl: '\n', bar: '|', slash: '/', sp: ' ', tab: '\t' };
+  const radios = (set, name) => `<div class="chips">${C.choices(set).map((x) =>
+    `<label class="chip"><input type="radio" name="${name}" value="${esc(x.value)}"><span>${esc(C.label(x, lang))}</span></label>`).join('')}</div>`;
 
-/* ---- 部品を組み立てる ---- */
+  /* 発症時刻・最終飲食は「30分以内 / 約2時間前」の相対セレクト。
+     患者は正確な時刻を思い出せないことが多く、iOS Safari の datetime-local も
+     待合で操作させるには重い。絶対時刻への変換は relative() が行う。 */
+  const onset = (id, meal) => `<select id="${id}">${opts(meal ? 'meal' : 'onset')}</select><p class="hint" id="${id}Abs"></p>`;
 
-function mkChips(containerId, items) {
-  const box = $(containerId);
-  for (const it of items) {
-    const [value, sub] = Array.isArray(it) ? it : [it, ''];
-    const el = document.createElement('label');
-    el.className = 'chip';
-    el.innerHTML = '<input type="checkbox" data-v="' + value + '"><span>' + value +
-      (sub ? '<br><small style="opacity:.7">' + sub + '</small>' : '') + '</span>';
-    el.querySelector('input').addEventListener('change', (e) =>
-      el.classList.toggle('on', e.target.checked));
-    box.appendChild(el);
-  }
-}
+  const input = (id, ja, english, extra = '') =>
+    `<div class="field"><label for="${id}">${t(ja, english)}</label><input id="${id}" ${extra}></div>`;
 
-function mkOptions(selectId, pairs) {
-  const s = $(selectId);
-  for (const [v, t] of pairs) {
-    const o = document.createElement('option');
-    o.value = v; o.textContent = t;
-    s.appendChild(o);
-  }
-}
+  const textarea = (id, ja, english, ph = '') =>
+    `<div class="field"><label for="${id}">${t(ja, english)}</label><textarea id="${id}" placeholder="${esc(ph)}"></textarea></div>`;
 
-mkChips('insurance', INSURANCE);
-mkChips('gSympt', G_SYMPT);
-mkChips('gSite', G_SITE);
-mkChips('gHx', G_HX);
-mkChips('nSympt', N_SYMPT);
-mkChips('nInfect', N_INFECT);
-mkChips('nHx', N_HX);
-mkChips('anticoag', ANTICOAG);
-mkOptions('gOnset', ONSET);
-mkOptions('nOnset', ONSET);
-mkOptions('lastmeal', MEAL);
-
-const checked = (id) =>
-  Array.from(document.querySelectorAll('#' + id + ' input:checked')).map((e) => e.dataset.v);
-
-/* ---- 分岐 ---- */
-let branch = null;
-for (const b of document.querySelectorAll('.branch button')) {
-  b.addEventListener('click', () => {
-    branch = b.dataset.branch;
-    for (const o of document.querySelectorAll('.branch button')) o.classList.toggle('on', o === b);
-    $('secGeka').hidden = branch !== 'geka';
-    $('secNaika').hidden = branch !== 'naika';
-    $('secCommon').hidden = false;
-    overrideText = null;
-    render();
-  });
-}
-
-/* ---- 生年月日（和暦→西暦）と年齢 ---- */
-const ERA_NAME = { 1926: '昭和', 1989: '平成', 2019: '令和', 1912: '大正' };
-
-function dob() {
-  const y = parseInt($('byear').value, 10);
-  const m = parseInt($('bmonth').value, 10);
-  const d = parseInt($('bday').value, 10);
-  if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
-
-  const era = $('era').value;
-  const year = era === 'seireki' ? y : parseInt(era, 10) + y - 1;
-  if (year < 1880 || year > new Date().getFullYear()) return null;
-
-  const now = new Date();
-  let age = now.getFullYear() - year;
-  if ((now.getMonth() + 1) * 100 + now.getDate() < m * 100 + d) age--;
-
-  const wareki = era === 'seireki' ? '' : ERA_NAME[era] + y + '年';
-  return { year, m, d, age, wareki, text: year + '/' + m + '/' + d + ' ' + age + '歳' };
-}
-
-/* ---- 相対時刻を絶対時刻に直す ---- */
-function relTime(selectId, noneLabels) {
-  const sel = $(selectId);
-  const v = sel.value;
-  if (!v) return '';
-  if (noneLabels && noneLabels[v]) return noneLabels[v];
-  const h = parseFloat(v);
-  const t = new Date(Date.now() - h * 3600 * 1000);
-  const p = (n) => String(n).padStart(2, '0');
-  const abs = (t.getMonth() + 1) + '/' + t.getDate() + ' ' + p(t.getHours()) + ':' + p(t.getMinutes());
-  return abs + '頃(' + sel.selectedOptions[0].textContent + ')';
-}
-const onsetText = (id) => relTime(id, { unknown: '覚えていない' });
-const mealText = () => relTime('lastmeal',
-  { nothing: '今日は何も食べていない', unknown: '覚えていない' });
-
-/* ---- 文字列を組み立てる ---- */
-function buildText() {
-  const sep = SEP_CHAR[$('sep').value];
-  const now = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  const stamp = now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate() +
-    ' ' + p(now.getHours()) + ':' + p(now.getMinutes());
-
-  const items = [];
-  const add = (k, v) => { if (v) items.push(k ? k + ':' + v : v); };
-  const join = (a) => a.join('、');
-
-  // 取り違え防止のため、氏名と生年月日を先頭に置く（貼った瞬間に照合できるように）
-  const b = dob();
-  const id = [
-    $('pid').value ? 'ID' + $('pid').value : '',
-    $('name').value || '氏名未入力',
-    $('kana').value ? '(' + $('kana').value + ')' : '',
-    b ? b.text : '生年月日未入力',
-    $('sex').value,
-  ].filter(Boolean).join(' ');
-
-  const head = '【問診】' + id + sep +
-    '受付' + ($('recv').value || '-') + ' ' + $('who').value + ' ' + stamp;
-
-  add('', $('first').value);
-  const trig = $('trigger').value;
-  if (trig) add('きっかけ', trig + ($('reffrom').value ? '（' + $('reffrom').value + '）' : ''));
-  const ins = checked('insurance').filter((v) => v !== 'どちらでもない');
-  add('労災・自賠責', join(ins));
-  add('緊急連絡先', [$('emName').value, $('emPhone').value].filter(Boolean).join(' '));
-
-  if (branch === 'geka') {
-    add('', '【外傷・整形】');
-    add('症状', join(checked('gSympt')));
-    add('部位', join(checked('gSite').concat($('gSiteOther').value ? [$('gSiteOther').value] : [])));
-    add('発症', onsetText('gOnset'));
-    add('受傷機転', $('gCause').value);
-    add('手術歴', $('gSurg').value);
-    add('治療中', join(checked('gHx').concat($('gHxOther').value ? [$('gHxOther').value] : [])));
-  } else if (branch === 'naika') {
-    add('', '【内科】');
-    add('症状', join(checked('nSympt').concat($('nSymptOther').value ? [$('nSymptOther').value] : [])));
-    add('体温', $('nTemp').value ? $('nTemp').value + '℃' : '');
-    add('発症', onsetText('nOnset'));
-    add('周囲の同症状', $('nAround').value);
-    add('旅行・渡航', $('nTravel').value);
-    add('感染症', join(checked('nInfect')));
-    add('治療中', join(checked('nHx').concat($('nHxOther').value ? [$('nHxOther').value] : [])));
+  /* 5〜6段階スライダー＋顔文字。識字・言語の壁を越えて答えられるようにする。
+     痛みだけ6段階なので顔の並びが違う。 */
+  function range(id, ja, english, set) {
+    const a = C.choices(set);
+    const face = (i) => set === 'pain'
+      ? ['😊', '🙂', '😐', '😣', '😢', '😭'][i]
+      : ['😊', '🙂', '😐', '😟', '😴'][i] || '😣';
+    return `<div class="rangebox"><label>${t(ja, english)}: <output id="${id}Out">${esc(C.label(a[0], lang))}</output></label>` +
+      `<input type="range" id="${id}" min="0" max="${a.length - 1}" value="0">` +
+      `<div class="faces">${a.map((x, i) => `<span>${face(i)}</span>`).join('')}</div></div>`;
   }
 
-  add('抗凝固・抗血小板', join(checked('anticoag')));
-  const alg = [];
-  if ($('algDrug').value) alg.push('薬=' + $('algDrug').value);
-  if ($('algFood').value) alg.push('食物=' + $('algFood').value);
-  add('アレルギー', alg.join(' '));
-  add('最終飲食', mealText());
-  add('体重', $('weight').value ? $('weight').value + 'kg' : '');
-  add('妊娠', $('preg').value + ($('pregWk').value ? '（' + $('pregWk').value + '）' : ''));
-  add('かかりつけ', $('primaryDoctor').value);
-  add('その他', $('free').value.replace(/\s*\n\s*/g, ' '));
-
-  return items.length ? head + sep + items.join(sep) : head;
-}
-
-/* ---- 検証用パターン ---- */
-const PRESETS = [
-  ['ASCIIのみ', 'ER Triage Test 12345 ABCabc'],
-  ['日本語（短）', '【問診】受付12|主訴:頭痛|発症:約1時間前|抗凝固薬:エリキュース'],
-  ['特殊文字', '波ダッシュ〜全角チルダ～マイナス−丸数字①②単位㎎㎏㎡ローマ数字Ⅷ株式会社㈱半角ｶﾅ'],
-  ['変換不可を含む', '絵文字😀とハート♥を含む文（?になるはず）'],
-  ['Tabで登録画面テスト',
-    'ヤマダ タロウ\t山田 太郎\t1948/03/21\t男\t270-0034\t千葉県松戸市新松戸1-1-1\t047-000-0000'],
-  ['長文（問診まるごと・約370バイト）',
-    '【問診】受付12 本人|主訴:突然の頭痛と嘔気' +
-    '|発症:本日13時30分頃、自宅で休んでいたところ突然の激しい頭痛が出現。' +
-    '直後に嘔気あり、嘔吐は1回。意識ははっきりしている。' +
-    '|抗凝固薬:エリキュース(手帳で確認)|アレルギー:サバ、ペニシリン' +
-    '|最終飲食:本日12時頃 昼食|既往:高血圧、心房細動、脂質異常症' +
-    '|かかりつけ:市内クリニック|その他:同様の頭痛は初めて。家族に脳動脈瘤の人がいる。'],
-  ['限界テスト（約950バイト）',
-    '【問診】受付99 家族|' +
-    ('主訴と経過の記載をひたすら伸ばして読み取り限界を探るための試験文です。' +
-     '実際の問診はここまで長くなりませんが、スキャナがどこで読めなくなるかを' +
-     '先に知っておくと運用の上限を決められます。').repeat(5)],
-];
-
-let overrideText = null;
-PRESETS.forEach(([name, text]) => {
-  const b = document.createElement('button');
-  b.textContent = name;
-  b.onclick = () => { overrideText = text; render(); };
-  $('presets').appendChild(b);
-});
-
-/* ---- 描画 ---- */
-/* enc.normalized は「?」に置き換える前の文字列なので、そのまま出すと
-   実際にカルテへ入るものと食い違う。dropped の位置を ? に潰して実物を出す。
-   絵文字なら実害は無いが、𠮷(つちよし)のような cp932 に無い人名異体字も
-   同じ経路で ? になる。プレビューが元の字を見せ続けると画面上で気づけない。 */
-function deliveredText(enc) {
-  if (!enc.dropped.length) return enc.normalized;
-  let r = '', prev = 0;
-  for (const d of enc.dropped) {
-    r += enc.normalized.slice(prev, d.index) + '?';
-    prev = d.index + d.ch.length;
+  /* 有／無のラジオ＋「有」のときだけ出る詳細欄。表示切替は update() が行う。 */
+  function conditional(name, ja, english, detail, phJa, phEn) {
+    return `<div class="field"><label>${t(ja, english)}</label>${radios('yesNo', name)}` +
+      `<input id="${detail}" placeholder="${t(phJa, phEn)}" hidden></div>`;
   }
-  return r + enc.normalized.slice(prev);
-}
 
-function drawQR(res, scale) {
-  const quiet = 4;
-  const n = res.size + quiet * 2;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = n * scale;
-  const g = cv.getContext('2d');
-  g.fillStyle = '#fff';
-  g.fillRect(0, 0, cv.width, cv.height);
-  g.fillStyle = '#000';
-  for (let r = 0; r < res.size; r++)
-    for (let c = 0; c < res.size; c++)
-      if (res.modules[r][c])
-        g.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
-  $('qrbox').replaceChildren(cv);
-}
+  /* 区切りの既定は `|`。改行は L-46X →カルテで黙って消えるので使用不可
+     （選べるようにはしてあるが、選ぶと警告を出す）。README「運用上の注意」参照。 */
+  function qrSection() {
+    return `<section><h2>${mode === 'pediatric' ? '8' : '5'}. ${t('QRコード', 'QR code')}</h2>` +
+      `<button type="button" id="clearAll" class="danger">${t('入力をすべて消す', 'Clear all answers')}</button>` +
+      `<div id="error" class="alert" hidden></div><div id="warnings"></div>` +
+      `<div class="controls"><label>${t('区切り', 'Separator')} <select id="sep">` +
+      `<option value="|">|</option><option value="/">/</option>` +
+      `<option value=" ">${t('空白', 'Space')}</option><option value="\t">Tab</option>` +
+      `<option value="\n">${t('改行（使用不可）', 'Newline (do not use)')}</option></select></label>` +
+      `<label>${t('誤り訂正', 'Error correction')} <select id="ec">` +
+      `<option>L</option><option selected>M</option><option>Q</option><option>H</option></select></label></div>` +
+      `<div id="qrbox"></div><div id="meta"></div>` +
+      `<label>${t('電子カルテに入る文字列', 'Text entered into the medical record')}</label><pre id="out"></pre></section>`;
+  }
 
-/* 入力しながらQRが育つ（この画面は最初からそう作ってある）。氏名・生年月日が
-   埋まるまではQRを出さないが、白紙の時点で赤字を出すと急かすだけなので、
-   一度でも触ってから出す。 */
-let touched = false;
-function validationError() {
-  if (!$('name').value.trim()) return 'お名前を入力してください。';
-  if (!dob()) return '生年月日を正しく入力してください。';
-  return '';
-}
+  /* ---- 画面の組み立て ---- */
 
-function render() {
-  const scale = +$('scale').value;
-  $('scaleVal').textContent = '(' + scale + ')';
-  $('gOnsetAbs').textContent = $('gOnset').value ? '→ ' + onsetText('gOnset') : '';
-  $('nOnsetAbs').textContent = $('nOnset').value ? '→ ' + onsetText('nOnset') : '';
+  const commonHead = `<header><h1>${mode === 'pediatric' ? t('小児救急外来 問診', 'Pediatric Emergency Questionnaire') : 'Emergency Questionnaire'}</h1>
+    <nav>${mode === 'pediatric'
+      ? `<a href="${en ? '../' : './en/'}">${en ? '日本語' : 'English'}</a> ／ <a href="${en ? '../../en/' : '../'}">${t('成人版', 'Adult form')}</a>`
+      : '<a href="../">日本語</a> ／ <a href="../ped/en/">Pediatric</a>'}</nav>
+    <p>${t('内容は端末外へ送信されません。最後に表示されるQRコードを受付でお見せください。', 'Your answers never leave this device. Show the QR code to reception when finished.')}</p>
+    ${en ? '<p class="notice">Free-text answers are sent to the hospital exactly as you type them. Staff may read them in English.<br>Accented letters are converted to plain letters (José → Jose).</p>' : ''}</header>`;
 
-  const b = dob();
-  $('dobAbs').textContent = b
-    ? '→ ' + (b.wareki ? b.wareki + '（' + b.year + '年）' : b.year + '年') +
-      b.m + '月' + b.d + '日　' + b.age + '歳'
-    : ($('byear').value || $('bmonth').value || $('bday').value ? '→ 生年月日を確認してください' : '');
+  function adultHtml() {
+    return `${commonHead}<form id="form" novalidate>
+    <section><h2>1. About you</h2><p class="hint">Name and date of birth are required.</p>
+      <div class="row">${input('name', 'お名前', 'Full name', 'autocomplete="name"')}${input('kana', 'フリガナ', 'Name in Katakana')}</div>
+      <div class="row">${input('pid', '診察券番号', 'Patient ID', 'inputmode="numeric"')}${input('dob', '生年月日', 'Date of birth', 'type="date"')}
+      <div class="field"><label for="sex">Sex</label><select id="sex">${opts('sex', true)}</select></div></div>
+      <div class="row"><div class="field"><label for="who">Completed by</label><select id="who">${opts('who')}</select></div><div class="field"><label for="first">First visit?</label><select id="first">${opts('first', true)}</select></div>${input('recv', '受付番号', 'Reception no.', 'inputmode="numeric"')}</div>
+      <div class="row"><div class="field"><label for="trigger">Reason for visit</label><select id="trigger">${opts('trigger', true)}</select></div>${input('reffrom', '紹介元', 'Referring facility')}</div>
+      <label>Insurance / circumstances</label>${checks('insurance', 'insurance')}
+      <h3>Emergency contact</h3><div class="row">${input('emName', '氏名・続柄', 'Name and relationship')}${input('emPhone', '電話', 'Phone', 'inputmode="tel"')}</div>
+    </section>
+    <section><h2>2. What brings you here?</h2>${radios('adultBranch', 'branch')}</section>
+    <section id="geka" hidden><h2>3. Injury or pain</h2><label>Symptoms</label>${checks('gSympt', 'gSympt')}<label>Location</label>${checks('gSite', 'gSite')}${input('gSiteOther', 'その他の部位', 'Other location')}
+      <div class="row"><div class="field"><label>Onset</label>${onset('gOnset')}</div><div class="field"><label>Cause</label><select id="gCause">${opts('gCause', true)}</select></div></div>
+      ${input('gSurg', '手術歴', 'Previous surgery', 'placeholder="e.g. stomach surgery (2015)"')}<label>Conditions under treatment</label>${checks('gHx', 'gHx')}${input('gHxOther', 'その他の病名', 'Other condition')}</section>
+    <section id="naika" hidden><h2>3. Fever or illness</h2><div class="row"><div class="field"><label>Onset</label>${onset('nOnset')}</div>
+      <div class="field"><label>Temperature</label><div class="unitrow"><input id="temperature" inputmode="decimal"><select id="tempUnit"><option value="C">°C</option><option value="F">°F</option></select></div><p class="hint" id="tempConverted"></p></div></div>
+      <label>Symptoms</label>${checks('nSympt', 'nSympt')}${input('nSymptOther', 'その他の症状', 'Other symptoms')}
+      <div class="row"><div class="field"><label>People nearby with similar symptoms</label><select id="nAround">${opts('nAround', true)}</select></div>${input('nTravel', '旅行・渡航', 'Recent travel / event')}</div>
+      <label>COVID-19 / influenza</label>${checks('nInfect', 'nInfect')}<label>Chronic conditions</label>${checks('nHx', 'nHx')}${input('nHxOther', 'その他の病名', 'Other condition')}</section>
+    <section id="adultCommon" hidden><h2>4. Medications and allergies</h2><label>Blood thinners</label>${checks('anticoag', 'anticoag')}
+      <div class="row">${input('algDrug', '薬のアレルギー', 'Medication allergies', 'placeholder="e.g. penicillin"')}${input('algFood', '食物アレルギー', 'Food allergies', 'placeholder="e.g. mackerel"')}</div>
+      <div class="row"><div class="field"><label>Last food or drink</label>${onset('lastMeal', true)}</div><div class="field"><label>Weight</label><div class="unitrow"><input id="weight" inputmode="decimal"><select id="weightUnit"><option value="kg">kg</option><option value="lb">lb</option></select></div><p class="hint" id="weightConverted"></p></div></div>
+      <div class="row"><div class="field"><label>Pregnancy</label><select id="preg">${opts('preg', true)}</select></div>${input('pregDetail', '妊娠詳細', 'Weeks pregnant / breastfeeding')}</div>
+      ${input('primaryDoctor', 'かかりつけ医（いつもの病院）', 'Usual doctor / hospital')}
+      ${textarea('other', 'その他', 'Anything else')}</section>
+    ${qrSection()}</form>`;
+  }
 
-  const text = overrideText !== null ? overrideText : buildText();
-  const ec = $('ec').value;
-  const enc = encodeSJIS(text);
-  $('out').textContent = deliveredText(enc);
+  function pediatricHtml() {
+    return `${commonHead}<form id="form" novalidate>
+    <section><h2>1. ${t('お子さまの情報', 'About the child')}</h2><p class="hint">${t('氏名と生年月日は必須です。', 'Name and date of birth are required.')}</p>
+      <div class="row">${input('name', 'お名前', 'Full name')}${input('kana', 'フリガナ', 'Name in Katakana')}</div><div class="row">${input('pid', '診察券番号', 'Patient ID')}${input('dob', '生年月日', 'Date of birth', 'type="date"')}<div class="field"><label>${t('性別', 'Sex')}</label><select id="sex">${opts('sex', true)}</select></div></div>
+      <p id="ageBadge" class="notice" hidden></p><div class="field"><label>${t('現在の体重', 'Current weight')}</label><div class="unitrow"><input id="weight" inputmode="decimal"><select id="weightUnit"><option value="kg">kg</option>${en ? '<option value="lb">lb</option>' : ''}</select></div><p id="weightConverted" class="hint"></p></div></section>
+    <section id="guardian" hidden><h2>2. ${t('保護者情報', 'Parent / guardian')}</h2><div class="row">${input('guardianName', '保護者氏名', 'Name')}${input('guardianPhone', '連絡先電話', 'Phone', 'inputmode="tel"')}</div><label>${t('続柄', 'Relationship')}</label>${radios('relationship', 'relationship')}${input('emergencyContact', '別の緊急連絡先', 'Alternative emergency contact')}</section>
+    <section><h2>3. ${t('今日はどうされましたか', 'What brings you here?')}</h2>${radios('complaint', 'complaint')}<div class="row"><div class="field"><label>${t('いつから', 'Onset')}</label>${onset('pOnset')}</div><div class="field"><label>${t('体温', 'Temperature')}</label><div class="unitrow"><input id="temperature" inputmode="decimal"><select id="tempUnit"><option value="C">°C</option>${en ? '<option value="F">°F</option>' : ''}</select></div><p id="tempConverted" class="hint"></p></div></div>${textarea('symptoms', '症状と経過', 'Symptoms and course')}</section>
+    <section id="development" hidden><h2>4. ${t('出生・発達歴', 'Birth and development')}</h2><div class="row">${input('gestationalWeeks', '妊娠週数', 'Gestational weeks', 'type="number" min="20" max="45"')}<div class="field"><label>${t('満期区分', 'Term')}</label>${radios('term', 'gestationalTerm')}</div></div>
+      <label>${t('出生体重', 'Birth weight')}</label><div class="unitrow"><input id="birthWeight" inputmode="decimal"><select id="birthWeightUnit"><option value="g">g</option><option value="kg">kg</option>${en ? '<option value="lb">lb + oz</option>' : ''}</select><input id="birthWeightOz" inputmode="decimal" placeholder="oz" hidden></div><p id="birthWeightConverted" class="hint"></p>
+      <div class="row"><div class="field"><label>${t('先天異常・奇形', 'Congenital condition')}</label>${radios('yesNo', 'congenital')}<input id="congenitalDetail" placeholder="${t('有の場合の詳細', 'Details if yes')}"></div><div class="field"><label>${t('発達の心配', 'Developmental concerns')}</label>${radios('yesNo', 'developmentConcern')}<input id="developmentDetail" placeholder="${t('有の場合の詳細', 'Details if yes')}"></div></div></section>
+    <section id="vaccination" hidden><h2>5. ${t('予防接種歴', 'Vaccination history')}</h2>${radios('vaccination', 'vaccinationStatus')}<div class="row">${input('lastVaccinationDate', '直近の接種日', 'Most recent date', 'type="date"')}${input('lastVaccine', 'ワクチン名', 'Vaccine name')}</div></section>
+    <section id="pedSymptoms" hidden><h2>6. ${t('小児特有症状', 'Child-specific symptoms')}</h2>${range('energy', '元気さ', 'Activity', 'energy')}${range('intake', '飲み食べ', 'Food and fluid intake', 'intake')}
+      <div class="field"><label>${t('排尿・排便', 'Urination and bowel movements')}</label><select id="elimination">${opts('elimination', true)}</select></div>
+      ${conditional('seizure', 'けいれん', 'Seizure', 'seizureDetail', '初回年齢・持続時間・頻度', 'Age at first seizure, duration, frequency')}${conditional('febrileSeizure', '熱性けいれん歴', 'Previous febrile seizure', 'febrileDetail', '回数', 'Number of episodes')}${conditional('rash', '発疹', 'Rash', 'rashDetail', '場所・色・広がり・発症時期', 'Location, color, spread and onset')}</section>
+    <section><h2>7. ${t('痛み・薬・アレルギー', 'Pain, medications and allergies')}</h2>${range('pain', '痛み', 'Pain', 'pain')}${textarea('medications', '現在使用中の薬', 'Current medications', t('例: なし / 薬の名前', 'None / medication names'))}${textarea('allergies', 'アレルギー', 'Allergies', t('例: ペニシリン、サバ', 'e.g. penicillin, mackerel'))}
+      <div class="field"><label>${t('最後に飲食したのは', 'Last food or drink')}</label>${onset('lastMeal', true)}</div>${input('primaryDoctor', 'かかりつけ医（いつもの病院）', 'Usual doctor / hospital')}${textarea('other', 'その他', 'Anything else')}</section>
+    ${qrSection()}</form>`;
+  }
 
-  if (overrideText === null) {
-    const err = validationError();
-    $('formError').hidden = !(err && touched);
-    $('formError').textContent = err;
-    if (err) {
-      $('qrbox').replaceChildren(); $('meta').innerHTML = ''; $('alerts').innerHTML = '';
-      return;
+  app.innerHTML = mode === 'pediatric' ? pediatricHtml() : adultHtml();
+
+  /* ---- 入力の保持 ----
+     sessionStorage だけを使う。localStorage も Cookie も使わない。
+     タブを閉じれば消えるので、共用端末で前の患者の答えが残らない。
+     区切り・誤り訂正は表示設定なので保存対象から外す。 */
+
+  const storageKey = 'er-monshin-' + mode + '-' + lang;
+
+  function saveForm() {
+    const data = {};
+    for (const el of document.querySelectorAll('#form input,#form select,#form textarea')) {
+      const key = el.id || el.name;
+      if (!key || ['sep', 'ec'].includes(key)) continue;
+      if (el.type === 'checkbox') (data[key] ||= []).push([el.value, el.checked]);
+      else if (el.type === 'radio') { if (el.checked) data[key] = el.value; }
+      else data[key] = el.value;
+    }
+    /* file:// やプライベートモードでは投げる。保存できなくても入力は続けられる。 */
+    try { sessionStorage.setItem(storageKey, JSON.stringify(data)); } catch (_) { /* 保存しないだけ */ }
+  }
+
+  function restoreForm() {
+    let data;
+    try { data = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch (_) { return; }
+    if (!data) return;
+    for (const el of document.querySelectorAll('#form input,#form select,#form textarea')) {
+      const key = el.id || el.name;
+      if (!(key in data)) continue;
+      if (el.type === 'checkbox') {
+        const hit = data[key].find((x) => x[0] === el.value);
+        el.checked = !!(hit && hit[1]);
+      } else if (el.type === 'radio') {
+        el.checked = data[key] === el.value;
+      } else {
+        el.value = data[key];
+      }
     }
   }
 
-  const alerts = [];
-  let res = null;
-  try {
-    res = qrFromBytes(enc.bytes, ec);
-  } catch (e) {
-    alerts.push(['warn', e.message + ' その他欄を短くするか、誤り訂正を L にしてください。']);
+  /* ---- 値の取り出し ---- */
+
+  const val = (id) => $(id) ? $(id).value.trim() : '';
+  const radio = (name) => document.querySelector(`input[name="${name}"]:checked`)?.value || '';
+  const checked = (name) => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map((x) => x.value);
+
+  /* QRに入れる前の掃除。
+     ★英語版はアクセントを落とす。cp932 に é ü ñ が無く、素通しすると
+       José が Jos? になって**エラーも出さずに壊れる**（README の方針）。
+     区切りに使う `|` と改行は、値の中にあると項目が切れるので空白にする。 */
+  const clean = (s) => (en ? C.stripAccents(s) : String(s))
+    .replace(/[|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  /* 空の項目はQRに出さない。カルテに「体温:」だけ並ぶのを避ける。 */
+  const add = (a, k, v) => { v = clean(v); if (v) a.push(k ? `${k}:${v}` : v); };
+
+  /* ---- 単位・時刻・年齢 ----
+     ★QRに出すのは kg と ℃ だけ。lb / °F のまま出すとカルテ側で読み違える。 */
+
+  function metricWeight() {
+    const n = Number(val('weight'));
+    if (!n) return '';
+    return ($('weightUnit').value === 'lb' ? C.lbToKg(n) : n) + 'kg';
   }
 
-  if (res) {
-    drawQR(res, scale);
-    $('meta').innerHTML =
-      '<span class="badge">Shift-JIS <b>' + enc.bytes.length + '</b> バイト</span>' +
-      '<span class="badge">型番 <b>v' + res.version + '</b> (' + res.size + '×' + res.size + ')</span>' +
-      '<span class="badge">誤り訂正 <b>' + ec + '</b></span>' +
-      '<span class="badge">この型番の上限 <b>' + maxBytes(res.version, ec) + '</b> バイト</span>';
-  } else {
+  function metricTemp() {
+    const n = Number(val('temperature'));
+    if (!n) return '';
+    return ($('tempUnit').value === 'F' ? C.fToC(n) : n) + '℃';
+  }
+
+  /* 満年齢と月齢。境界は誕生日当日に新しい年齢へ切り替わる。
+     未来日・不正な日付は null を返し、呼び出し側で弾く。 */
+  function ageAt(date, now = new Date()) {
+    const d = new Date(date + 'T00:00:00');
+    if (isNaN(d) || d > now) return null;
+    let months = (now.getFullYear() - d.getFullYear()) * 12 + now.getMonth() - d.getMonth();
+    if (now.getDate() < d.getDate()) months--;
+    if (months < 0) return null;
+    return { months, years: Math.floor(months / 12), monthPart: months % 12 };
+  }
+
+  /* 「約2時間前」を「9/16 14:30頃(約2時間前)」に直す。
+     カルテには絶対時刻が要るが、患者に時刻を思い出させるのは無理があるため、
+     端末の時計で変換する。BYOD ならモバイル網同期で時計は正確。 */
+  function relative(id, special) {
+    const s = $(id);
+    if (!s || !s.value) return '';
+    if (s.value === 'unknown') return '覚えていない';
+    if (s.value === 'nothing') return '今日は何も食べていない';
+    const d = new Date(Date.now() - Number(s.value) * 3600000);
+    const p = (n) => String(n).padStart(2, '0');
+    const label = C.choices(special ? 'meal' : 'onset').find((x) => x.value === s.value).ja;
+    return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}頃(${label})`;
+  }
+
+  function stamp() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  /* ★取り違え対策: 診察券番号・氏名・生年月日・性別をQRの先頭に置く。
+     貼った瞬間に本人かどうか照合できるようにするため。紙の問診票ですら
+     取り違えが起きているので、ここは削らないこと。 */
+  function identity(header) {
+    const a = ageAt(val('dob'));
+    const line = `${header}${val('pid') ? 'ID' + clean(val('pid')) + ' ' : ''}${clean(val('name'))}` +
+      `${val('kana') ? ' (' + clean(val('kana')) + ')' : ''} ${val('dob').replace(/-/g, '/')}` +
+      `${a ? ' ' + a.years + '歳' : ''} ${val('sex')}`;
+    return line.trim();
+  }
+
+  /* ---- QRに載せる文字列 ----
+     ★項目名も選択値も常に日本語。英語版でも変えない（カルテが日本語運用）。
+     自由記述だけは患者が書いたまま入るので、英語版は「入力言語:English」を
+     先頭付近に入れて、職員が英語混じりだと分かるようにする。 */
+
+  function adultText() {
+    const a = [], sep = $('sep').value;
+    add(a, '', identity('【問診】') + sep + '受付' + (val('recv') || '-') + ' ' + val('who') + ' ' + stamp());
+    if (en) add(a, '入力言語', 'English');
+    add(a, '', val('first'));
+    const tr = val('trigger');
+    if (tr) add(a, 'きっかけ', tr + (val('reffrom') ? '（' + val('reffrom') + '）' : ''));
+    add(a, '労災・自賠責', checked('insurance').filter((x) => x !== 'どちらでもない').join('、'));
+    add(a, '緊急連絡先', [val('emName'), val('emPhone')].filter(Boolean).join(' '));
+
+    const b = radio('branch');
+    if (b === 'geka') {
+      add(a, '', '【外傷・整形】');
+      add(a, '症状', checked('gSympt').join('、'));
+      add(a, '部位', checked('gSite').concat(val('gSiteOther') || []).join('、'));
+      add(a, '発症', relative('gOnset'));
+      add(a, '受傷機転', val('gCause'));
+      add(a, '手術歴', val('gSurg'));
+      add(a, '治療中', checked('gHx').concat(val('gHxOther') || []).join('、'));
+    } else if (b === 'naika') {
+      add(a, '', '【内科】');
+      add(a, '症状', checked('nSympt').concat(val('nSymptOther') || []).join('、'));
+      add(a, '体温', metricTemp());
+      add(a, '発症', relative('nOnset'));
+      add(a, '周囲の同症状', val('nAround'));
+      add(a, '旅行・渡航', val('nTravel'));
+      add(a, '感染症', checked('nInfect').join('、'));
+      add(a, '治療中', checked('nHx').concat(val('nHxOther') || []).join('、'));
+    }
+
+    add(a, '抗凝固・抗血小板', checked('anticoag').join('、'));
+    const al = [];
+    if (val('algDrug')) al.push('薬=' + val('algDrug'));
+    if (val('algFood')) al.push('食物=' + val('algFood'));
+    add(a, 'アレルギー', al.join(' '));
+    add(a, '最終飲食', relative('lastMeal', true));
+    add(a, '体重', metricWeight());
+    add(a, '妊娠', val('preg') + (val('pregDetail') ? '（' + val('pregDetail') + '）' : ''));
+    add(a, 'かかりつけ', val('primaryDoctor'));
+    add(a, 'その他', val('other'));
+    return a.join(sep);
+  }
+
+  function pedText() {
+    const a = [], sep = $('sep').value, age = ageAt(val('dob'));
+    /* 成人版と出所を区別できるようヘッダを分ける（【救急隊ホットライン】等と同じ考え方）。 */
+    add(a, '', identity('【小児問診】') + sep + stamp());
+    if (en) add(a, '入力言語', 'English');
+    add(a, '体重', metricWeight());
+
+    /* 画面に出していない項目はQRにも入れない。年齢条件は update() の表示条件と対で持つ。 */
+    if (age && age.months < 180) {
+      add(a, '保護者', [val('guardianName'), radio('relationship'), val('guardianPhone')].filter(Boolean).join(' '));
+      add(a, '別の緊急連絡先', val('emergencyContact'));
+    }
+    add(a, '主訴', radio('complaint'));
+    add(a, '発症', relative('pOnset'));
+    add(a, '体温', metricTemp());
+    add(a, '症状・経過', val('symptoms'));
+
+    if (age && age.months < 24) {
+      add(a, '妊娠週数', val('gestationalWeeks') ? (val('gestationalWeeks') + '週 ' + radio('gestationalTerm')) : '');
+      if (val('birthWeight')) {
+        add(a, '出生体重', C.birthWeightToG(val('birthWeight'), val('birthWeightUnit'), val('birthWeightOz')) + 'g');
+      }
+      add(a, '先天異常', radio('congenital') +
+        (radio('congenital') === '有' && val('congenitalDetail') ? '（' + val('congenitalDetail') + '）' : ''));
+      add(a, '発達の心配', radio('developmentConcern') +
+        (radio('developmentConcern') === '有' && val('developmentDetail') ? '（' + val('developmentDetail') + '）' : ''));
+    }
+    if (age && age.months < 72) {
+      add(a, '予防接種', radio('vaccinationStatus'));
+      add(a, '直近の接種', [val('lastVaccinationDate'), val('lastVaccine')].filter(Boolean).join(' '));
+    }
+    if (age && age.months < 180) {
+      /* 元気さ（lethargy）は小児救急の重篤徴候。保護者が答えられる形にしてある。 */
+      add(a, '元気さ', C.choices('energy')[+$('energy').value].value);
+      add(a, '飲食状況', C.choices('intake')[+$('intake').value].value);
+      add(a, '排尿・排便', val('elimination'));
+      for (const [name, label, detail] of [
+        ['seizure', 'けいれん', 'seizureDetail'],
+        ['febrileSeizure', '熱性けいれん歴', 'febrileDetail'],
+        ['rash', '発疹', 'rashDetail'],
+      ]) {
+        add(a, label, radio(name) + (radio(name) === '有' && val(detail) ? '（' + val(detail) + '）' : ''));
+      }
+    }
+    add(a, '痛み', C.choices('pain')[+$('pain').value].value);
+    add(a, '使用中の薬', val('medications'));
+    add(a, 'アレルギー', val('allergies'));
+    add(a, '最終飲食', relative('lastMeal', true));
+    add(a, 'かかりつけ', val('primaryDoctor'));
+    add(a, 'その他', val('other'));
+    return a.join(sep);
+  }
+
+  /* ---- 表示 ---- */
+
+  /* enc.normalized は「?」へ置換する前の文字列なので、そのまま出すと実際に
+     カルテへ入るものと食い違う。dropped の位置を ? に潰して実物を見せる。
+     𠮷（つちよし）のような人名異体字でも起きるので、日本語版でも必要。 */
+  function delivered(enc) {
+    if (!enc.dropped.length) return enc.normalized;
+    let r = '', p = 0;
+    for (const d of enc.dropped) {
+      r += enc.normalized.slice(p, d.index) + '?';
+      p = d.index + d.ch.length;
+    }
+    return r + enc.normalized.slice(p);
+  }
+
+  function draw(res) {
+    const q = 4, scale = 5, n = res.size + q * 2;
+    const c = document.createElement('canvas');
+    c.width = c.height = n * scale;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = '#000';
+    for (let r = 0; r < res.size; r++) {
+      for (let col = 0; col < res.size; col++) {
+        if (res.modules[r][col]) g.fillRect((col + q) * scale, (r + q) * scale, scale, scale);
+      }
+    }
+    $('qrbox').replaceChildren(c);
+  }
+
+  /* 換算の表示と、条件付きセクションの出し入れ。QR文字列側の年齢条件と対になっている
+     （片方だけ直すと、画面に出ていない項目がQRに入る／その逆が起きる）。 */
+  function update() {
+    if ($('weightConverted')) {
+      $('weightConverted').textContent =
+        val('weight') && $('weightUnit').value === 'lb' ? `→ ${C.lbToKg(val('weight'))} kg` : '';
+    }
+    if ($('tempConverted')) {
+      $('tempConverted').textContent =
+        val('temperature') && $('tempUnit').value === 'F' ? `→ ${C.fToC(val('temperature'))} ℃` : '';
+    }
+    if ($('birthWeightOz')) $('birthWeightOz').hidden = $('birthWeightUnit').value !== 'lb';
+    if ($('birthWeightConverted')) {
+      $('birthWeightConverted').textContent = val('birthWeight')
+        ? `→ ${C.birthWeightToG(val('birthWeight'), val('birthWeightUnit'), val('birthWeightOz'))} g` : '';
+    }
+
+    if (mode === 'adult') {
+      const b = radio('branch');
+      $('geka').hidden = b !== 'geka';
+      $('naika').hidden = b !== 'naika';
+      $('adultCommon').hidden = !b;
+      return;
+    }
+
+    const a = ageAt(val('dob'));
+    for (const [id, show] of [
+      ['guardian', a && a.months < 180],
+      ['pedSymptoms', a && a.months < 180],
+      ['vaccination', a && a.months < 72],
+      ['development', a && a.months < 24],
+    ]) $(id).hidden = !show;
+
+    if (a) {
+      $('ageBadge').hidden = false;
+      $('ageBadge').textContent = t(`${a.years}歳${a.monthPart}か月`, `${a.years} years ${a.monthPart} months`);
+    } else {
+      $('ageBadge').hidden = true;
+    }
+
+    for (const [name, detail] of [
+      ['seizure', 'seizureDetail'], ['febrileSeizure', 'febrileDetail'], ['rash', 'rashDetail'],
+      ['congenital', 'congenitalDetail'], ['developmentConcern', 'developmentDetail'],
+    ]) if ($(detail)) $(detail).hidden = radio(name) !== '有';
+
+    for (const id of ['energy', 'intake', 'pain']) {
+      $(id + 'Out').textContent = C.label(C.choices(id)[+$(id).value], lang);
+    }
+  }
+
+  /* 入力しながらQRが育つ。氏名・生年月日が埋まるまではQRを出さないが、
+     白紙の時点で赤字を出すと急かすだけなので、一度触ってから出す。 */
+  let touched = false;
+
+  function renderQR() {
+    let err = !val('name') ? t('氏名を入力してください。', 'Enter the name.')
+      : !ageAt(val('dob')) ? t('生年月日を入力してください。', 'Enter a valid date of birth.')
+      : '';
+    if (mode === 'pediatric') {
+      const a = ageAt(val('dob'));
+      if (!err && a.months < 180 && (!val('guardianName') || !val('guardianPhone') || !radio('relationship'))) {
+        err = t('保護者の氏名・続柄・電話を入力してください。',
+          'Enter the guardian name, relationship and phone.');
+      }
+    }
+    $('error').hidden = !(err && touched);
+    $('error').textContent = err;
+    if (err) {
+      $('qrbox').replaceChildren();
+      $('out').textContent = '';
+      return;
+    }
+
+    const text = mode === 'pediatric' ? pedText() : adultText();
+    const enc = encodeSJIS(text);
+    $('out').textContent = delivered(enc);
+
+    const warnings = [];
+    if ($('sep').value === '\n') {
+      warnings.push(t('改行は実機で消えるため使用できません。',
+        'Newlines disappear on the scanner and must not be used.'));
+    }
+    if (enc.dropped.length) {
+      warnings.push(t('Shift-JISに変換できない文字を「?」に置換しました: ',
+        'Characters unsupported by Shift-JIS were replaced with “?”: ') +
+        [...new Set(enc.dropped.map((x) => x.ch))].join(' '));
+    }
+    $('warnings').innerHTML = warnings.map((x) => `<div class="alert">${esc(x)}</div>`).join('');
+
+    try {
+      const res = qrFromBytes(enc.bytes, $('ec').value);
+      draw(res);
+      $('meta').textContent = `Shift-JIS ${enc.bytes.length} bytes / v${res.version} / ${res.ec}`;
+    } catch (x) {
+      $('qrbox').replaceChildren();
+      $('error').hidden = false;
+      $('error').textContent = t(x.message,
+        'The answers are too long for one QR code. Please shorten free-text answers or select error correction L.');
+    }
+  }
+
+  /* ---- 配線 ---- */
+
+  /* ★ボタンの id を 'reset' にしてはいけない。フォーム内のコントロールは form の
+     名前付きプロパティになるため、id="reset" は HTMLFormElement.reset() を隠す。
+     $('form').reset() が TypeError で落ち、**入力が消えないのに消えたように見える**。
+     共用端末では前の患者の答えが残ることになる。実際にこれで壊れていた。 */
+  $('clearAll').addEventListener('click', () => {
+    if (!confirm(t('入力をすべて消します。よろしいですか？', 'Clear all answers?'))) return;
+    sessionStorage.removeItem(storageKey);
+    $('form').reset();
     $('qrbox').replaceChildren();
-    $('meta').innerHTML = '<span class="badge">Shift-JIS <b>' + enc.bytes.length + '</b> バイト</span>';
+    $('out').textContent = '';
+    $('warnings').innerHTML = '';
+    $('meta').textContent = '';
+    $('error').hidden = true;
+    touched = false;
+    update();
+  });
+
+  function responseChanged() {
+    touched = true;
+    saveForm();
+    update();
+    renderQR();
   }
 
-  const sepv = $('sep').value;
-  if (sepv === 'nl') {
-    alerts.push(['warn', '★改行は実機（L-46X→電子カルテ）で消えることを確認済みです。' +
-      '項目が繋がって誤読を招くため、運用では使わないでください。']);
-  } else if (sepv === 'tab') {
-    alerts.push(['ok', 'Tab は患者登録画面のフィールド移動を試すための設定です。' +
-      'カルテ本文へ貼る通常運用では「|」を使ってください。']);
-  }
-  if (enc.dropped.length) {
-    const list = [...new Set(enc.dropped.map((d) => d.ch))].join(' ');
-    alerts.push(['warn', 'Shift-JISに変換できない文字が ' + enc.dropped.length +
-      ' 個あり「?」に置き換えました → ' + list +
-      '　※薬剤名にこれが出た場合は原本で確認してください。']);
-  }
+  /* 未来日を弾く。入れられても検証で止まるが、カレンダーの時点で選べないほうが早い。 */
+  (function () {
+    const n = new Date(), p = (x) => String(x).padStart(2, '0');
+    const today = n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate());
+    for (const el of document.querySelectorAll('input[type=date]')) el.max = today;
+  })();
 
-  $('alerts').innerHTML = alerts
-    .map(([k, m]) => '<div class="alert ' + k + '">' + m + '</div>').join('');
-}
+  /* 入力欄で Enter を押すと form が暗黙送信され、ページが再読み込みされて入力が飛ぶ。 */
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); touched = true; renderQR(); });
 
-/* ---- 次の患者に渡す前のリセット ---- */
-$('reset').addEventListener('click', () => {
-  if (!confirm('入力をすべて消して最初に戻ります。よろしいですか？')) return;
-  for (const el of document.querySelectorAll('input, select, textarea')) {
-    if (el.type === 'checkbox') { el.checked = false; el.closest('.chip').classList.remove('on'); }
-    else if (el.type === 'range') { /* 表示設定は保持 */ }
-    else if (el.tagName === 'SELECT') { el.selectedIndex = 0; }
-    else el.value = '';
-  }
-  $('era').value = '1926';
-  $('sep').value = 'bar';
-  $('ec').value = 'M';
-  $('formError').hidden = true;
-  branch = null;
-  for (const o of document.querySelectorAll('.branch button')) o.classList.remove('on');
-  $('secGeka').hidden = true;
-  $('secNaika').hidden = true;
-  $('secCommon').hidden = true;
-  overrideText = null;
-  touched = false;
-  render();
-  $('out').textContent = '';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-});
-
-document.addEventListener('input', (e) => {
-  if (!['scale', 'ec', 'sep'].includes(e.target.id)) { overrideText = null; touched = true; }
-  render();
-});
-document.addEventListener('change', () => { touched = true; render(); });
-
-render();
-</script>
-<script>
-/* PWA。file:// 配布では SW は成立しないので https のときだけ登録する
-   （ガードしないとローカル版でコンソールにエラーが出続ける）。 */
-if (location.protocol === 'https:' && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
-}
-</script>
-</body>
-</html>
+  restoreForm();
+  document.addEventListener('input', responseChanged);
+  document.addEventListener('change', responseChanged);
+  update();
+  renderQR();
+})();
+</script><script>if(location.protocol==='https:'&&'serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('../sw.js'));</script></body></html>
