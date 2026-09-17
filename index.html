@@ -83,6 +83,8 @@
              font-size:.76rem;color:var(--sub)}
   .staff label{margin-top:4px}
   .reset{border-color:var(--warn);color:var(--warn);font-weight:700}
+  /* 二度確認の1回目。押した場所そのものを変えて「もう一度押すと消える」と気づかせる */
+  .reset.armed{background:var(--warn);color:#fff}
 </style>
 </head>
 <body>
@@ -396,10 +398,10 @@
   <div class="staff" style="margin-top:20px">
     <span class="staff-tag">次の患者さんに渡す前に</span>
     <p class="hint" style="margin:0 0 10px">
+      <b>職員用です。</b>受付での読み取りが終わってから押してください。
       前の方の入力が残ったまま渡すと<b>取り違えの原因になります</b>。
-      読み取りが終わったら必ず押してください。
     </p>
-    <button type="button" id="reset" class="reset">読み取り完了 — 入力をすべて消す</button>
+    <button type="button" id="reset" class="reset">入力をすべて消去（受付での読み取り後）</button>
   </div>
 </section>
 
@@ -416,7 +418,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-09-16 eda38be</b>
+  版: <b>2026-09-17 8eb2456</b>
 </p>
 
 </div>
@@ -982,6 +984,51 @@ if (typeof module !== 'undefined' && module.exports) {
 
 </script>
 <script>
+/* 「入力をすべて消去」を二度確認にする。4ページ共通（build.py が <!--CLEARGUARD--> に差し込む）。
+ *
+ * ★なぜ二度か: 確認ダイアログ1回では足りなかった。患者さんがQRを見せ終わったあと
+ *   「完了ボタン」だと思って押し、出てきたダイアログも反射的に OK してしまい、
+ *   入力が全部消える事故が現場で起きた。
+ *
+ *   1回目: ボタンが赤く塗られ「もう一度押すと全データを消去します」に変わる（5秒で元に戻る）
+ *   2回目: 「全データを消去します。よろしいですか？」のダイアログ
+ *
+ *   1段目をボタンの見た目の変化にしてあるのは、ダイアログを2回続けると
+ *   2回とも反射で OK されるため。押した場所そのものが変わるので気づける。
+ *
+ * ★「元に戻す（Undo）」は入れていない。共用端末では、次の患者さんが前の患者さんの
+ *   入力を復元できてしまう（取り違え・個人情報の両面で問題）。
+ */
+function guardClear(button, texts, onClear) {
+  const original = button.textContent;
+  let armed = false;
+  let timer = null;
+
+  function disarm() {
+    armed = false;
+    clearTimeout(timer);
+    button.textContent = original;
+    button.classList.remove('armed');
+  }
+
+  button.addEventListener('click', () => {
+    if (!armed) {
+      armed = true;
+      button.textContent = texts.again;
+      button.classList.add('armed');
+      timer = setTimeout(disarm, 5000);
+      return;
+    }
+    disarm();
+    if (!confirm(texts.confirm)) return;
+    onClear();
+  });
+}
+
+if (typeof module !== 'undefined') module.exports = { guardClear };
+
+</script>
+<script>
 /* ================= 画面側 ================= */
 const $ = (id) => document.getElementById(id);
 
@@ -1303,9 +1350,13 @@ function render() {
     .map(([k, m]) => '<div class="alert ' + k + '">' + m + '</div>').join('');
 }
 
-/* ---- 次の患者に渡す前のリセット ---- */
-$('reset').addEventListener('click', () => {
-  if (!confirm('入力をすべて消して最初に戻ります。よろしいですか？')) return;
+/* ---- 次の患者に渡す前のリセット ----
+   二度確認（clear-guard.js）。「読み取り完了」の文言とダイアログ1回では、
+   QRを見せ終わった患者さんが押して OK してしまい、入力が消える事故があった。 */
+guardClear($('reset'), {
+  again: 'もう一度押すと全データを消去します',
+  confirm: '全データを消去します。よろしいですか？\n\n（受付での読み取りが終わっていない場合は「キャンセル」）',
+}, () => {
   for (const el of document.querySelectorAll('input, select, textarea')) {
     if (el.type === 'checkbox') { el.checked = false; el.closest('.chip').classList.remove('on'); }
     else if (el.type === 'range') { /* 表示設定は保持 */ }
