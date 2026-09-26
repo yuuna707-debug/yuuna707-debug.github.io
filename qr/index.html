@@ -54,6 +54,12 @@
             border:1px solid var(--ok);color:var(--ok)}
   .hint{color:var(--sub);font-size:.84rem;margin:6px 0 0}
   .foot{color:var(--sub);font-size:.8rem;text-align:center;margin-top:26px}
+  /* 複数QRの送り */
+  .pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:10px}
+  .pager b{font-size:1.05rem;min-width:5.5em;text-align:center}
+  .pager button{min-width:88px}
+  #pager .hint{text-align:center;margin:0}
+  #outNote{font-weight:400;color:var(--sub);font-size:.85rem}
   /* 全画面表示（スキャナに読ませるとき） */
   #full{position:fixed;inset:0;background:#fff;display:none;z-index:99;
         flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:12px}
@@ -68,7 +74,8 @@
 <h1>貼り付け → Shift-JIS QR</h1>
 <p class="lead">
   テキストを貼り付けると Shift-JIS(cp932) の QR コードになります。
-  通信しません。入力内容は端末の外に出ず、どこにも保存されません。
+  通信しません。入力内容は端末の外に出ません。
+  他のアプリの「共有」からこの画面へ直接渡すこともできます（受け取った文章は画面に入れた時点で消します）。
 </p>
 
 <section>
@@ -107,11 +114,27 @@
       <label for="scale">QRの大きさ <span id="scaleVal"></span></label>
       <input type="range" id="scale" min="2" max="14" value="6" style="width:100%">
     </div>
+    <div>
+      <label for="chunk">1枚あたりの文字数</label>
+      <input type="number" id="chunk" min="50" max="1400" step="50" value="500">
+    </div>
   </div>
+  <p class="hint">
+    これを超える長さは複数のQRに分けます（薬手帳・紹介状などの長文用）。
+    読み取りにくいときは小さくしてください。1枚に収まる長さなら分割は起きません。
+  </p>
 </section>
 
 <section>
   <h2>QRコード</h2>
+  <div id="pager" hidden>
+    <div class="pager">
+      <button type="button" id="btnPrev">◀ 前</button>
+      <b id="pagerLabel"></b>
+      <button type="button" id="btnNext">次 ▶</button>
+    </div>
+    <p class="hint" id="pagerHint"></p>
+  </div>
   <div id="qrbox"></div>
   <div class="meta" id="meta"></div>
   <div id="alerts"></div>
@@ -119,21 +142,26 @@
     <button type="button" id="btnFull" class="primary">全画面で表示（読ませる）</button>
   </div>
 
-  <label>スキャナが送る文字列</label>
+  <label>スキャナが送る文字列<span id="outNote"></span></label>
   <pre id="out"></pre>
 </section>
 
 <p class="foot">
   このページは通信しません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-09-17 8eb2456</b>
+  版: <b>2026-09-26 b1b905b</b>
 </p>
 
 </div>
 
 <div id="full">
   <div id="fullbox"></div>
-  <div class="tip">画面を明るくしてください／タップで戻る</div>
+  <div class="pager" id="fullPager" hidden>
+    <button type="button" id="btnFullPrev">◀ 前</button>
+    <b id="fullLabel"></b>
+    <button type="button" id="btnFullNext">次 ▶</button>
+  </div>
+  <div class="tip">画面を明るくしてください／背景をタップで戻る</div>
 </div>
 
 <script>
@@ -615,6 +643,112 @@ if (typeof module !== 'undefined' && module.exports) {
 
 </script>
 <script>
+/* 長文を複数のQRに分けるための処理。
+   スキャンした薬手帳・紹介状を電子カルテへ渡す経路で使う（問診フォームは1枚に収まるので通らない）。
+
+   hotlinedx の src/hotlinedx/qr/generator.py の split_text() を JS へ移したもの。
+   ただし2点だけ意図的に変えてある（理由はそれぞれの箇所に書いた）:
+     - 文境界に「区切り文字」を加えた（この画面では改行が先に | へ置換されているため）
+     - ハッシュを SHA-1 から自前の短いものに変えた（同期で計算したいため。値は hotlinedx と一致しない） */
+
+/** ヘッダ `[i/N xxxxxxxx]` ＋区切り文字のために確保しておく文字数。
+ *  N が3桁以上になると足りなくなるので、qrChunks 側で実測して足りなければ広げる。 */
+const HEADER_RESERVE = 18;
+
+/** 文字列から8桁の16進ハッシュを作る（FNV-1a 32bit）。
+ *  暗号用途ではない。「別の文書の断片が混ざっていないか」を見分けるだけのもの。
+ *  crypto.subtle は非同期なうえ secure context 限定で、この画面の同期的な再描画に馴染まない。
+ *  外部ライブラリを持ち込まない方針とも噛み合うので自前で持つ。 */
+function shortHash(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    // FNV の素数 16777619 を掛ける。32bit に収めるため Math.imul を使う
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/** 上限を超えない位置で切る。文の切れ目（。と区切り文字）を優先する。
+ *  戻り値をそのまま連結すると元の文字列に戻る（1文字も落とさない）。 */
+function splitText(text, maxChars, sep) {
+  if (!text) return [];
+  const limit = Math.max(1, maxChars);
+
+  const boundary = new Set(['。']);
+  // ★ hotlinedx は「。」と改行を境界にするが、この画面では改行が先に区切り文字へ
+  //   置換されている。境界に加えないと長文が「1文」扱いになり、文の途中で切れる。
+  if (sep) for (const ch of sep) boundary.add(ch);
+
+  const sentences = [];
+  let cur = '';
+  for (const ch of text) {          // コードポイント単位（サロゲートペアを割らない）
+    cur += ch;
+    if (boundary.has(ch)) { sentences.push(cur); cur = ''; }
+  }
+  if (cur) sentences.push(cur);
+
+  const chunks = [];
+  let buf = '';
+  for (let s of sentences) {
+    // 1文が上限を超えるときは諦めて強制的に割る
+    while (s.length > limit) {
+      if (buf) { chunks.push(buf); buf = ''; }
+      chunks.push(s.slice(0, cutAt(s, limit)));
+      s = s.slice(cutAt(s, limit));
+    }
+    if (buf.length + s.length > limit) { chunks.push(buf); buf = s; }
+    else buf += s;
+  }
+  if (buf) chunks.push(buf);
+  return chunks;
+}
+
+/** limit 文字目がサロゲートペアの前半なら1つ手前で切る。
+ *  割ってしまうと壊れた片割れが2つでき、Shift-JIS 変換で「?」が1個ではなく2個になる。 */
+function cutAt(s, limit) {
+  const code = s.charCodeAt(limit - 1);
+  if (code >= 0xd800 && code <= 0xdbff && limit > 1) return limit - 1;
+  return limit;
+}
+
+/** QRに渡す文字列の配列を返す。
+ *  1枚に収まるならヘッダを付けない（これまでの動作を変えないため）。
+ *  2枚以上になるときだけ各chunkの先頭に `[i/N ハッシュ]` ＋区切り文字を足す。 */
+function qrChunks(text, opts) {
+  const o = opts || {};
+  const maxChars = o.maxChars || 500;
+  const sep = o.sep === undefined ? '|' : o.sep;
+
+  if (!text) return [];
+  if (text.length <= maxChars) return [text];
+
+  // ヘッダの実寸は枚数で変わる（[9/9 …] と [12/34 …] は長さが違う）。
+  // 確保量が足りなければ広げてやり直す。通常は1回で決まる。
+  let reserve = HEADER_RESERVE;
+  let chunks = [];
+  for (let pass = 0; pass < 4; pass++) {
+    chunks = splitText(text, maxChars - reserve, sep);
+    const need = headerFor(chunks.length, chunks.length, '00000000', sep).length;
+    if (need <= reserve) break;
+    reserve = need;
+  }
+
+  const hash = shortHash(text);
+  const n = chunks.length;
+  return chunks.map((c, i) => headerFor(i + 1, n, hash, sep) + c);
+}
+
+function headerFor(i, n, hash, sep) {
+  return '[' + i + '/' + n + ' ' + hash + ']' + sep;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { splitText, shortHash, qrChunks, HEADER_RESERVE };
+}
+
+</script>
+<script>
 const $ = (id) => document.getElementById(id);
 
 /* 改行はスキャナ→電子カルテで「そのまま消える」ことが実機で確認されている。
@@ -661,6 +795,13 @@ function makeCanvas(res, scale) {
 }
 
 let lastRes = null;
+let pageIndex = 0;      // いま表示しているQRの番号（0始まり）
+
+/* ヘッダの区切りにも使う。keep のときは本文に生の改行が残っているので改行を境界にする。 */
+function sepChar() {
+  const mode = $('nl').value;
+  return mode === 'keep' ? '\n' : NL_REPL[mode];
+}
 
 function render() {
   const scale = +$('scale').value;
@@ -668,45 +809,99 @@ function render() {
 
   const text = sourceText();
   const ec = $('ec').value;
-  const enc = encodeSJIS(text);
-  $('out').textContent = deliveredText(enc);
+  const maxChars = Math.max(50, +$('chunk').value || 500);
+  const chunks = qrChunks(text, { maxChars: maxChars, sep: sepChar() });
+  const total = chunks.length;
+
+  if (pageIndex >= total) pageIndex = Math.max(0, total - 1);
+
+  /* 変換できない文字は文書全体で拾う（いま見ている1枚だけ見ても気づけない） */
+  const encs = chunks.map((c) => encodeSJIS(c));
+  const dropped = encs.flatMap((e) => e.dropped);
+  const totalBytes = encs.reduce((n, e) => n + e.bytes.length, 0);
 
   const alerts = [];
+  const hardMax = maxBytes(40, ec);
+  const over = encs
+    .map((e, i) => ({ i: i + 1, n: e.bytes.length }))
+    .filter((x) => x.n > hardMax);
+
+  /* 送りの表示（画面内と全画面の両方をここで揃える） */
+  const multi = total >= 2;
+  $('pager').hidden = !multi;
+  $('fullPager').hidden = !multi;
+  if (multi) {
+    const label = (pageIndex + 1) + ' / ' + total + ' 枚目';
+    $('pagerLabel').textContent = label;
+    $('fullLabel').textContent = label;
+    $('btnPrev').disabled = $('btnFullPrev').disabled = pageIndex === 0;
+    $('btnNext').disabled = $('btnFullNext').disabled = pageIndex === total - 1;
+    $('pagerHint').textContent =
+      '1枚目から順に読ませてください。各QRの先頭に [' + (pageIndex + 1) + '/' + total +
+      ' …] が入り、順番と同一文書であることがカルテ上でも分かります。';
+  }
+
+  /* QRはいま見ている1枚だけ作る（打鍵のたびに全部作ると重い） */
   let res = null;
-  if (text !== '') {
+  const cur = encs[pageIndex];
+  if (cur) {
     try {
-      res = qrFromBytes(enc.bytes, ec);
+      res = qrFromBytes(cur.bytes, ec);
     } catch (e) {
-      alerts.push(['warn', e.message + ' 文章を短くするか、誤り訂正を L にしてください。']);
+      alerts.push(['warn', e.message +
+        ' 「1枚あたりの文字数」を小さくするか、誤り訂正を L にしてください。']);
     }
   }
   lastRes = res;
 
+  $('out').textContent = cur ? deliveredText(cur) : '';
+  $('outNote').textContent = total >= 2
+    ? '（' + (pageIndex + 1) + '/' + total + ' 枚目の分。ヘッダを含む）' : '';
+
   if (res) {
     $('qrbox').replaceChildren(makeCanvas(res, scale));
     $('meta').innerHTML =
-      '<span class="badge">Shift-JIS <b>' + enc.bytes.length + '</b> バイト</span>' +
+      '<span class="badge">Shift-JIS <b>' + cur.bytes.length + '</b> バイト</span>' +
       '<span class="badge">型番 <b>v' + res.version + '</b> (' + res.size + '×' + res.size + ')</span>' +
       '<span class="badge">誤り訂正 <b>' + ec + '</b></span>' +
-      '<span class="badge">この型番の上限 <b>' + maxBytes(res.version, ec) + '</b> バイト</span>';
+      '<span class="badge">この型番の上限 <b>' + maxBytes(res.version, ec) + '</b> バイト</span>' +
+      (total >= 2
+        ? '<span class="badge">全 <b>' + total + '</b> 枚 / 合計 <b>' + totalBytes + '</b> バイト</span>'
+        : '');
   } else {
     $('qrbox').replaceChildren();
-    $('meta').innerHTML = text === '' ? '' :
-      '<span class="badge">Shift-JIS <b>' + enc.bytes.length + '</b> バイト</span>';
+    $('meta').innerHTML = total === 0 ? '' :
+      '<span class="badge">Shift-JIS <b>' + (cur ? cur.bytes.length : 0) + '</b> バイト</span>';
   }
 
+  if (over.length) {
+    alerts.push(['warn', over.length + ' 枚目のデータがQRの上限（' + hardMax +
+      ' バイト）を超えています。「1枚あたりの文字数」を小さくしてください。']);
+  }
   if ($('nl').value === 'keep' && /\r?\n/.test($('src').value)) {
     alerts.push(['warn', '★改行は実機（L-46X→電子カルテ）で消えることを確認済みです。' +
-      '前後の項目が繋がって誤読を招くため、「| に置き換える」を使ってください。']);
+      '前後の項目が繋がって誤読を招くため、「| に置き換える」を使ってください。' +
+      '分割したときは順序ヘッダの区切りも消えます。']);
   }
-  if (enc.dropped.length) {
-    const list = [...new Set(enc.dropped.map((d) => d.ch))].join(' ');
-    alerts.push(['warn', 'Shift-JISに変換できない文字が ' + enc.dropped.length +
+  if (dropped.length) {
+    const list = [...new Set(dropped.map((d) => d.ch))].join(' ');
+    alerts.push(['warn', 'Shift-JISに変換できない文字が ' + dropped.length +
       ' 個あり「?」に置き換えました → ' + list]);
   }
   $('alerts').innerHTML = alerts
     .map(([k, m]) => '<div class="alert ' + k + '">' + m + '</div>').join('');
 }
+
+/* ---- 送り ---- */
+function go(d) {
+  pageIndex = Math.max(0, pageIndex + d);
+  render();   // ラベルと前/次の活殺はここで両方そろう
+  if ($('full').classList.contains('on') && lastRes) {
+    $('fullbox').replaceChildren(makeCanvas(lastRes, 14));
+  }
+}
+$('btnPrev').onclick = () => go(-1);
+$('btnNext').onclick = () => go(1);
 
 /* ---- 貼り付け ---- */
 /* clipboard.readText() は安全なコンテキスト＋許可が要る。file:// では動かないことがあるので、
@@ -730,6 +925,8 @@ let wakeLock = null;
 async function openFull() {
   if (!lastRes) return;
   $('fullbox').replaceChildren(makeCanvas(lastRes, 14));
+  $('fullPager').hidden = $('pager').hidden;
+  $('fullLabel').textContent = $('pagerLabel').textContent;
   $('full').classList.add('on');
   try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* 非対応 */ }
 }
@@ -740,9 +937,39 @@ async function closeFull() {
 $('btnFull').onclick = openFull;
 $('full').onclick = closeFull;
 
+/* 送りのボタンで全画面が閉じないようにする（親の onclick へ伝わるのを止める） */
+$('fullPager').onclick = (e) => e.stopPropagation();
+$('btnFullPrev').onclick = () => go(-1);
+$('btnFullNext').onclick = () => go(1);
+
+/* ---- 他のアプリの「共有」から受け取る ----
+ * スキャンアプリの OCR 結果を、コピペせずにそのまま持ち込むための入口。
+ * 受け渡しは sw.js が置いたキャッシュ1件だけ。★読んだら即座に消す（端末に残さない）。 */
+async function loadShared() {
+  if (!/[?&]shared=1/.test(location.search)) return;
+  // URL の印を消す（再読み込みで空振りしないように・履歴にも残さない）
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* noop */ }
+  try {
+    const cache = await caches.open('er-monshin-share');
+    const res = await cache.match('/__shared__');
+    if (!res) return;
+    const t = await res.text();
+    await cache.delete('/__shared__');
+    if (t) {
+      $('src').value = t;
+      pageIndex = 0;
+      render();
+      $('pasteHint').textContent = '共有から受け取りました。内容を原本と見比べてください。';
+    }
+  } catch (e) {
+    /* caches が使えない環境（file:// 等）では共有自体が来ないので何もしない */
+  }
+}
+
 document.addEventListener('input', render);
 document.addEventListener('change', render);
 render();
+loadShared();
 </script>
 <script>
 /* PWA。このページは dist/qr/index.html として出るので sw.js は1つ上にある。

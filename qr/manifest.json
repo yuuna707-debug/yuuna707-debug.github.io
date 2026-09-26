@@ -10,6 +10,12 @@
   "orientation": "portrait",
   "background_color": "#f5f6f8",
   "theme_color": "#1a7a3d",
+  "share_target": {
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  },
   "icons": [
     {
       "src": "../icons/qr-192.png",
