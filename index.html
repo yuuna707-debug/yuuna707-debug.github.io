@@ -418,7 +418,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-09-26 b1b905b</b>
+  版: <b>2026-09-30 231f948</b>
 </p>
 
 </div>
@@ -470,6 +470,36 @@ function sjisMap() {
   return m;
 }
 
+/* 丸数字（①〜⑳・㉑〜㊿・⓪）。NFKC だと囲みが消えて数字だけになる。 */
+function _isCircledNumber(cp) {
+  return (cp >= 0x2460 && cp <= 0x2473) || cp === 0x24ea ||
+         (cp >= 0x3251 && cp <= 0x325f) || (cp >= 0x32b1 && cp <= 0x32bf);
+}
+
+/**
+ * NFKC 正規化。ただし「数字でない文字が数字だけに化ける」ものは NFKC に通さない。
+ * そのまま通すと「①5mg」が「15mg」、「10³」が「103」になり、用量が黙って変わる。
+ *   - 丸数字 → 「(1)」のように括弧で囲む（数字と繋がらない・どの Shift-JIS でも出る）
+ *   - それ以外（上付き・下付き数字など）→ 原文のまま残す。cp932 に無いので
+ *     encodeSJIS が '?' にして dropped に載せ、画面で警告される
+ * ㎎→mg・㈱→(株)・全角英数→半角のような意味を保つ変換は従来どおり。
+ * gen_expected.py の normalize_sjis() と同じ規則にすること。
+ */
+function normalizeSJIS(s) {
+  let out = '', run = '';
+  for (const ch of s) {
+    const k = ch.normalize('NFKC');
+    if (k !== ch && /^[0-9]+$/.test(k) && !/\p{Nd}/u.test(ch)) {
+      out += run.normalize('NFKC');
+      run = '';
+      out += _isCircledNumber(ch.codePointAt(0)) ? '(' + k + ')' : ch;
+    } else {
+      run += ch;
+    }
+  }
+  return out + run.normalize('NFKC');
+}
+
 /**
  * 文字列を Shift-JIS(cp932) バイト列にする。
  * 変換できない文字は '?' に置き換え、dropped に記録する（黙って消さない）。
@@ -478,7 +508,7 @@ function sjisMap() {
 function encodeSJIS(text, opts) {
   opts = opts || {};
   let s = String(text);
-  if (opts.normalize !== false) s = s.normalize('NFKC');
+  if (opts.normalize !== false) s = normalizeSJIS(s);
   s = s.replace(/\r\n?/g, '\n');
   // 正規化の「後」に置換する。NFKC は ￥(U+FFE5) を ¥(U+00A5, cp932不可) に変えるため。
   for (const from of Object.keys(SJIS_SUBS)) {
@@ -897,7 +927,7 @@ function maxBytes(version, ec) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { encodeSJIS, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
+  module.exports = { encodeSJIS, normalizeSJIS, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
 }
 
 </script>

@@ -5,7 +5,7 @@
  *   埋めないと端末が古いページを永久に出し続ける（版ずれの最悪形）。
  *   版が変われば別キャッシュになり、activate で古いものを消す。
  */
-const VERSION = '2026-09-26 b1b905b';
+const VERSION = '2026-09-30 231f948';
 const CACHE = 'er-monshin-' + VERSION;
 
 const ASSETS = [
