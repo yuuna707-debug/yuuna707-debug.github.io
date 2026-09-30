@@ -5,7 +5,7 @@
  *   埋めないと端末が古いページを永久に出し続ける（版ずれの最悪形）。
  *   版が変われば別キャッシュになり、activate で古いものを消す。
  */
-const VERSION = '2026-09-30 231f948';
+const VERSION = '2026-09-30 4cbdc88';
 const CACHE = 'er-monshin-' + VERSION;
 
 const ASSETS = [
@@ -28,7 +28,11 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
+  // ★cache:'reload' で HTTP キャッシュを飛ばして取りに行く。
+  //   付けないと GitHub Pages の max-age=600 が効き、直前に開いた旧版の HTML を
+  //   新しい版の名前でキャッシュしてしまう（次の版まで旧版に固定される。2026-09-30 実機で確認）。
+  e.waitUntil(caches.open(CACHE).then((c) =>
+    c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))));
   self.skipWaiting(); // 更新をすぐ反映する。古い版で診療されるのを避ける。
 });
 
