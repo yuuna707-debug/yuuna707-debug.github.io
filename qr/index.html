@@ -66,6 +66,7 @@
   #full.on{display:flex}
   #full canvas{image-rendering:pixelated;max-width:100%;max-height:82vh;height:auto}
   #full .tip{color:#555;font-size:.82rem;text-align:center}
+  #full .fullerr{color:var(--warn);font-weight:700;font-size:1.1rem;text-align:center;max-width:28em}
 </style>
 </head>
 <body>
@@ -115,13 +116,20 @@
       <input type="range" id="scale" min="2" max="14" value="6" style="width:100%">
     </div>
     <div>
-      <label for="chunk">1枚あたりの文字数</label>
-      <input type="number" id="chunk" min="50" max="1400" step="50" value="500">
+      <label for="split">長文の扱い</label>
+      <select id="split">
+        <option value="off" selected>分割しない（1枚に収める）</option>
+        <option value="on">複数のQRに分ける</option>
+      </select>
+    </div>
+    <div>
+      <label for="chunk">1枚あたりの文字数（分けるとき）</label>
+      <input type="number" id="chunk" min="50" max="1400" step="50" value="400" disabled>
     </div>
   </div>
   <p class="hint">
-    これを超える長さは複数のQRに分けます（薬手帳・紹介状などの長文用）。
-    読み取りにくいときは小さくしてください。1枚に収まる長さなら分割は起きません。
+    既定では分割しません。1枚に入らないときは、文字を削らずに警告を出して止めます。
+    「複数のQRに分ける」は、電子カルテが続けて読めることを確かめてから使ってください（未確認）。
   </p>
 </section>
 
@@ -149,7 +157,7 @@
 <p class="foot">
   このページは通信しません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-09-30 4cbdc88</b>
+  版: <b>2026-10-01 728e0a2</b>
 </p>
 
 </div>
@@ -222,7 +230,7 @@ function _isCircledNumber(cp) {
  * そのまま通すと「①5mg」が「15mg」、「10³」が「103」になり、用量が黙って変わる。
  *   - 丸数字 → 「(1)」のように括弧で囲む（数字と繋がらない・どの Shift-JIS でも出る）
  *   - それ以外（上付き・下付き数字など）→ 原文のまま残す。cp932 に無いので
- *     encodeSJIS が '?' にして dropped に載せ、画面で警告される
+ *     encodeSJIS が 〓 にして dropped に載せ、画面で警告される
  * ㎎→mg・㈱→(株)・全角英数→半角のような意味を保つ変換は従来どおり。
  * gen_expected.py の normalize_sjis() と同じ規則にすること。
  */
@@ -241,45 +249,106 @@ function normalizeSJIS(s) {
   return out + run.normalize('NFKC');
 }
 
-/**
- * 文字列を Shift-JIS(cp932) バイト列にする。
- * 変換できない文字は '?' に置き換え、dropped に記録する（黙って消さない）。
- * @returns {{bytes:number[], dropped:{ch:string,index:number}[], normalized:string}}
- */
-function encodeSJIS(text, opts) {
-  opts = opts || {};
-  let s = String(text);
-  if (opts.normalize !== false) s = normalizeSJIS(s);
-  s = s.replace(/\r\n?/g, '\n');
+/** 変換できない文字の身代わり。〓(0x81AC, げた記号)。
+ *  '?' だと原文にもともとある「?」と見分けがつかない。〓 は JIS X 0208 にあり
+ *  どの Shift-JIS でも出るうえ、日本語の文書で「ここは字が出なかった」の慣習的な印。 */
+const SJIS_REPL = '〓';
+const SJIS_REPL_BYTES = [0x81, 0xac];
+
+/** 幅だけの変換（全角英数→半角・半角カナ→全角・全角空白→半角）は意味が変わらないので
+ *  「読み替えた文字」の一覧に出さない。出すと毎回並んで本当に見るべきものが埋もれる。 */
+function _isWidthOnly(cp) {
+  return (cp >= 0xff01 && cp <= 0xff5e) || (cp >= 0xff61 && cp <= 0xff9f) || cp === 0x3000;
+}
+
+function _applySubs(s) {
   // 正規化の「後」に置換する。NFKC は ￥(U+FFE5) を ¥(U+00A5, cp932不可) に変えるため。
   for (const from of Object.keys(SJIS_SUBS)) {
     if (s.indexOf(from) >= 0) s = s.split(from).join(SJIS_SUBS[from]);
   }
+  return s;
+}
 
+/* バイト列→文字の逆引き（「スキャナが送る文字列」を画面に出すため）。
+   SJIS_ALIAS の字（−〜 等）は同じバイトになるので、カルテには正準の字（－～）で入る。 */
+let _sjisRev = null;
+function sjisRev() {
+  if (_sjisRev) return _sjisRev;
+  const r = new Map();
+  const nt = _SJIS_TRAILS.length;
+  for (const [start, s] of SJIS_RUNS) {
+    for (let k = 0; k < s.length; k++) {
+      const idx = start + k;
+      const key = (_SJIS_LEADS[(idx / nt) | 0] << 8) | _SJIS_TRAILS[idx % nt];
+      if (!r.has(key)) r.set(key, s[k]);
+    }
+  }
+  _sjisRev = r;
+  return r;
+}
+
+/**
+ * 文字列を Shift-JIS(cp932) バイト列にする。
+ * 変換できない文字は 〓 に置き換え、dropped に記録する（黙って消さない）。
+ * @returns {{bytes:number[], dropped:{ch:string,index:number}[], normalized:string,
+ *            delivered:string, changed:{from:string,to:string}[]}}
+ *   delivered … バイト列をそのまま文字に戻したもの＝スキャナが実際に送る文字列
+ *   changed   … 正規化・置換で別の字に読み替えたもの（幅だけの変換は除く・重複なし）
+ */
+function encodeSJIS(text, opts) {
+  opts = opts || {};
+  const raw = String(text);
+  const prep = (x) => {
+    if (opts.normalize !== false) x = normalizeSJIS(x);
+    return _applySubs(x.replace(/\r\n?/g, '\n'));
+  };
+  const s = prep(raw);
+  const enc = _encodePrepared(s);
+
+  /* 読み替えた字の一覧。行き先は「実際にカルテへ入る字」で示す（正規化の途中の字ではない）。
+     ¼ は 1⁄4 ではなく 1〓4、− は －。全部が 〓 になる字は dropped の警告に出るので載せない。 */
+  const changed = [];
+  const seen = new Set();
+  for (const ch of raw) {
+    if (seen.has(ch) || ch === '\r' || _isWidthOnly(ch.codePointAt(0))) continue;
+    seen.add(ch);
+    const to = _encodePrepared(prep(ch)).delivered;
+    if (to !== ch && to !== SJIS_REPL) changed.push({ from: ch, to: to });
+  }
+  return { bytes: enc.bytes, dropped: enc.dropped, normalized: s,
+           delivered: enc.delivered, changed: changed };
+}
+
+/* 正規化・置換を済ませた文字列をバイト列にする（encodeSJIS の下請け） */
+function _encodePrepared(s) {
   const map = sjisMap();
+  const rev = sjisRev();
   const out = [];
   const dropped = [];
+  let delivered = '';
   let i = 0;
   for (const ch of s) {
     const cp = ch.codePointAt(0);
-    if (ch === '\n') {
-      out.push(0x0a);
-    } else if (cp < 0x80) {
+    if (ch === '\n' || cp < 0x80) {
       out.push(cp);
+      delivered += ch;
     } else if (cp >= 0xff61 && cp <= 0xff9f) {
       out.push(cp - 0xff61 + 0xa1); // 半角カナ（NFKC無効時のみ通る）
+      delivered += ch;
     } else {
       const pair = map.get(ch);
       if (pair) {
         out.push(pair[0], pair[1]);
+        delivered += rev.get((pair[0] << 8) | pair[1]) || ch;
       } else {
-        out.push(0x3f); // '?'
+        out.push(SJIS_REPL_BYTES[0], SJIS_REPL_BYTES[1]);
+        delivered += SJIS_REPL;
         dropped.push({ ch: ch, index: i });
       }
     }
     i += ch.length;
   }
-  return { bytes: out, dropped: dropped, normalized: s };
+  return { bytes: out, dropped: dropped, delivered: delivered };
 }
 
 /* ---------------- ガロア体 GF(256) ---------------- */
@@ -668,7 +737,7 @@ function maxBytes(version, ec) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { encodeSJIS, normalizeSJIS, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
+  module.exports = { encodeSJIS, normalizeSJIS, SJIS_REPL, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
 }
 
 </script>
@@ -796,17 +865,9 @@ function sourceText() {
     .join(r);
 }
 
-/* enc.normalized は「?」に置き換える前の文字列なので、そのまま出すと
-   実際にスキャナが送るものと食い違う。dropped の位置を ? に潰して実物を出す。 */
-function deliveredText(enc) {
-  if (!enc.dropped.length) return enc.normalized;
-  let r = '', prev = 0;
-  for (const d of enc.dropped) {
-    r += enc.normalized.slice(prev, d.index) + '?';
-    prev = d.index + d.ch.length;
-  }
-  return r + enc.normalized.slice(prev);
-}
+/* L-46X → 電子カルテで読めたと確認できている最大のバイト数（2026-07-31, v25）。
+   これを超えても QR は作れるが、読めるかは未確認なので注意を出す。 */
+const VERIFIED_BYTES = 935;
 
 function makeCanvas(res, scale) {
   const quiet = 4;
@@ -833,21 +894,47 @@ function sepChar() {
   return mode === 'keep' ? '\n' : NL_REPL[mode];
 }
 
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/* 全画面の中身を、いま見ているページに合わせる。
+   ★QRを作れないページ（容量超過）では前のページのQRを残さない。残すと別のページを読ませてしまう。 */
+function refreshFull() {
+  if (!$('full').classList.contains('on')) return;
+  if (lastRes) {
+    $('fullbox').replaceChildren(makeCanvas(lastRes, 14));
+  } else {
+    const d = document.createElement('div');
+    d.className = 'fullerr';
+    d.textContent = 'このページはQRを作れません。背景をタップして戻り、警告を確認してください。';
+    $('fullbox').replaceChildren(d);
+  }
+  $('fullPager').hidden = $('pager').hidden;
+  $('fullLabel').textContent = $('pagerLabel').textContent;
+}
+
 function render() {
   const scale = +$('scale').value;
   $('scaleVal').textContent = '(' + scale + ')';
 
-  const text = sourceText();
+  const splitOn = $('split').value === 'on';
+  $('chunk').disabled = !splitOn;
+
+  /* ★先に文書全体を正規化してから分割する。分割してから正規化すると、
+     境目に掛かった半角の「ｶﾞ」が「カ」と「〓」に割れる（濁点だけが別のQRに行く）。 */
+  const text = normalizeSJIS(sourceText());
   const ec = $('ec').value;
-  const maxChars = Math.max(50, +$('chunk').value || 500);
-  const chunks = qrChunks(text, { maxChars: maxChars, sep: sepChar() });
+  const maxChars = Math.max(50, +$('chunk').value || 400);
+  const chunks = !text ? [] : splitOn ? qrChunks(text, { maxChars: maxChars, sep: sepChar() }) : [text];
   const total = chunks.length;
 
   if (pageIndex >= total) pageIndex = Math.max(0, total - 1);
 
-  /* 変換できない文字は文書全体で拾う（いま見ている1枚だけ見ても気づけない） */
+  /* 変換できない文字・読み替えた文字は文書全体で拾う（いま見ている1枚だけ見ても気づけない）。
+     読み替えは正規化「前」の原文と比べないと分からないので、原文から取る。 */
+  const whole = encodeSJIS(sourceText());
   const encs = chunks.map((c) => encodeSJIS(c));
-  const dropped = encs.flatMap((e) => e.dropped);
   const totalBytes = encs.reduce((n, e) => n + e.bytes.length, 0);
 
   const alerts = [];
@@ -859,32 +946,32 @@ function render() {
   /* 送りの表示（画面内と全画面の両方をここで揃える） */
   const multi = total >= 2;
   $('pager').hidden = !multi;
-  $('fullPager').hidden = !multi;
   if (multi) {
     const label = (pageIndex + 1) + ' / ' + total + ' 枚目';
     $('pagerLabel').textContent = label;
-    $('fullLabel').textContent = label;
     $('btnPrev').disabled = $('btnFullPrev').disabled = pageIndex === 0;
     $('btnNext').disabled = $('btnFullNext').disabled = pageIndex === total - 1;
     $('pagerHint').textContent =
       '1枚目から順に読ませてください。各QRの先頭に [' + (pageIndex + 1) + '/' + total +
       ' …] が入り、順番と同一文書であることがカルテ上でも分かります。';
+  } else {
+    $('pagerLabel').textContent = '';
   }
 
-  /* QRはいま見ている1枚だけ作る（打鍵のたびに全部作ると重い） */
+  /* QRはいま見ている1枚だけ作る（打鍵のたびに全部作ると重い）。
+     上限を超えるものは作らない（文字を削って押し込むことはしない）。 */
   let res = null;
   const cur = encs[pageIndex];
-  if (cur) {
+  if (cur && cur.bytes.length <= hardMax) {
     try {
       res = qrFromBytes(cur.bytes, ec);
     } catch (e) {
-      alerts.push(['warn', e.message +
-        ' 「1枚あたりの文字数」を小さくするか、誤り訂正を L にしてください。']);
+      alerts.push(['warn', esc(e.message)]);
     }
   }
   lastRes = res;
 
-  $('out').textContent = cur ? deliveredText(cur) : '';
+  $('out').textContent = cur ? cur.delivered : '';
   $('outNote').textContent = total >= 2
     ? '（' + (pageIndex + 1) + '/' + total + ' 枚目の分。ヘッダを含む）' : '';
 
@@ -905,30 +992,45 @@ function render() {
   }
 
   if (over.length) {
-    alerts.push(['warn', over.length + ' 枚目のデータがQRの上限（' + hardMax +
-      ' バイト）を超えています。「1枚あたりの文字数」を小さくしてください。']);
+    if (splitOn) {
+      alerts.push(['warn', over.map((x) => x.i).join('・') + ' 枚目がQRの上限（' + hardMax +
+        ' バイト）を超えています。「1枚あたりの文字数」を小さくしてください。']);
+    } else {
+      alerts.push(['warn', '★1枚のQRに入りません（' + over[0].n + ' バイト／上限 ' + hardMax +
+        ' バイト・誤り訂正 ' + ec + '）。文字は削っていません。' +
+        (ec !== 'L' ? '誤り訂正を L にすると入る場合があります。' : '') +
+        'それでも入らない場合は、範囲を選んで2回に分けて取り込むか、原本を参照してください。']);
+    }
+  }
+  const big = encs.filter((e) => e.bytes.length > VERIFIED_BYTES && e.bytes.length <= hardMax);
+  if (big.length) {
+    alerts.push(['warn', 'L-46X で読めたと確認できているのは ' + VERIFIED_BYTES +
+      ' バイトまでです。読めない場合は誤り訂正を下げるか、全画面で大きく表示してください。']);
   }
   if ($('nl').value === 'keep' && /\r?\n/.test($('src').value)) {
     alerts.push(['warn', '★改行は実機（L-46X→電子カルテ）で消えることを確認済みです。' +
       '前後の項目が繋がって誤読を招くため、「| に置き換える」を使ってください。' +
       '分割したときは順序ヘッダの区切りも消えます。']);
   }
-  if (dropped.length) {
-    const list = [...new Set(dropped.map((d) => d.ch))].join(' ');
-    alerts.push(['warn', 'Shift-JISに変換できない文字が ' + dropped.length +
-      ' 個あり「?」に置き換えました → ' + list]);
+  if (whole.dropped.length) {
+    const list = [...new Set(whole.dropped.map((d) => d.ch))].join(' ');
+    alerts.push(['warn', 'Shift-JISに変換できない文字が ' + whole.dropped.length +
+      ' 個あり「〓」に置き換えました → ' + esc(list)]);
+  }
+  if (whole.changed.length) {
+    alerts.push(['ok', '読み替えた文字（カルテにはこの形で入ります）: ' +
+      esc(whole.changed.map((c) => c.from + ' → ' + c.to).join('　'))]);
   }
   $('alerts').innerHTML = alerts
     .map(([k, m]) => '<div class="alert ' + k + '">' + m + '</div>').join('');
+
+  refreshFull();
 }
 
 /* ---- 送り ---- */
 function go(d) {
   pageIndex = Math.max(0, pageIndex + d);
-  render();   // ラベルと前/次の活殺はここで両方そろう
-  if ($('full').classList.contains('on') && lastRes) {
-    $('fullbox').replaceChildren(makeCanvas(lastRes, 14));
-  }
+  render();   // ラベル・前/次の活殺・全画面の中身はここで全部そろう
 }
 $('btnPrev').onclick = () => go(-1);
 $('btnNext').onclick = () => go(1);
@@ -939,7 +1041,7 @@ $('btnNext').onclick = () => go(1);
 $('btnPaste').onclick = async () => {
   try {
     const t = await navigator.clipboard.readText();
-    if (t) { $('src').value = t; render(); return; }
+    if (t) { $('src').value = t; pageIndex = 0; render(); return; }
     $('pasteHint').textContent = 'クリップボードが空でした。';
   } catch (e) {
     $('pasteHint').textContent =
@@ -947,21 +1049,26 @@ $('btnPaste').onclick = async () => {
     $('src').focus();
   }
 };
-$('btnClear').onclick = () => { $('src').value = ''; render(); $('src').focus(); };
+$('btnClear').onclick = () => {
+  $('src').value = '';
+  pageIndex = 0;
+  $('fullbox').replaceChildren();
+  render();
+  $('src').focus();
+};
 
 /* ---- 全画面表示 ---- */
 /* スキャナに読ませる間だけ画面を消させない。Wake Lock も安全なコンテキスト限定なので握りつぶす。 */
 let wakeLock = null;
 async function openFull() {
   if (!lastRes) return;
-  $('fullbox').replaceChildren(makeCanvas(lastRes, 14));
-  $('fullPager').hidden = $('pager').hidden;
-  $('fullLabel').textContent = $('pagerLabel').textContent;
   $('full').classList.add('on');
+  refreshFull();
   try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* 非対応 */ }
 }
 async function closeFull() {
   $('full').classList.remove('on');
+  $('fullbox').replaceChildren();   // 閉じたあと前の患者のQRを DOM に残さない
   try { if (wakeLock) { await wakeLock.release(); wakeLock = null; } } catch (e) { /* noop */ }
 }
 $('btnFull').onclick = openFull;
@@ -974,26 +1081,48 @@ $('btnFullNext').onclick = () => go(1);
 
 /* ---- 他のアプリの「共有」から受け取る ----
  * スキャンアプリの OCR 結果を、コピペせずにそのまま持ち込むための入口。
- * 受け渡しは sw.js が置いたキャッシュ1件だけ。★読んだら即座に消す（端末に残さない）。 */
+ * ★sw.js は受け取った文章をストレージに書かず、メモリに置いて1回限りの番号を付けて渡す。
+ *   ここでその番号を sw に送って受け取り、sw 側は渡した時点で消す。
+ *   取り出せなかったときは黙らずに「もう一度共有して」と出す。 */
+const SHARE_ID_RE = /[?&]shared=([0-9a-z-]{8,64})/;
+
+function takeShare(id) {
+  return navigator.serviceWorker.ready.then((reg) => new Promise((resolve) => {
+    const sw = navigator.serviceWorker.controller || reg.active;
+    if (!sw) { resolve(null); return; }
+    const ch = new MessageChannel();
+    const timer = setTimeout(() => resolve(null), 3000);
+    ch.port1.onmessage = (e) => {
+      clearTimeout(timer);
+      resolve(e.data && typeof e.data.text === 'string' ? e.data.text : null);
+    };
+    sw.postMessage({ type: 'take-share', id: id }, [ch.port2]);
+  }));
+}
+
 async function loadShared() {
-  if (!/[?&]shared=1/.test(location.search)) return;
-  // URL の印を消す（再読み込みで空振りしないように・履歴にも残さない）
+  const m = location.search.match(SHARE_ID_RE);
+  if (!m) return;
+  // URL の印を消す（履歴に残さない・再読み込みで空振りしない）
   try { history.replaceState(null, '', location.pathname); } catch (e) { /* noop */ }
+  let t = null;
   try {
-    const cache = await caches.open('er-monshin-share');
-    const res = await cache.match('/__shared__');
-    if (!res) return;
-    const t = await res.text();
-    await cache.delete('/__shared__');
-    if (t) {
-      $('src').value = t;
-      pageIndex = 0;
-      render();
-      $('pasteHint').textContent = '共有から受け取りました。内容を原本と見比べてください。';
-    }
+    if ('serviceWorker' in navigator) t = await takeShare(m[1]);
   } catch (e) {
-    /* caches が使えない環境（file:// 等）では共有自体が来ないので何もしない */
+    t = null;
   }
+  if (t === null) {
+    $('pasteHint').textContent = '共有の受け取りに失敗しました。もう一度「共有」してください。';
+    return;
+  }
+  if (!t) {
+    $('pasteHint').textContent = '共有された内容が空でした。';
+    return;
+  }
+  $('src').value = t;
+  pageIndex = 0;
+  render();
+  $('pasteHint').textContent = '共有から受け取りました。内容を原本と見比べてください。';
 }
 
 document.addEventListener('input', render);

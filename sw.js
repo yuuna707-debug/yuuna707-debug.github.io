@@ -5,7 +5,7 @@
  *   埋めないと端末が古いページを永久に出し続ける（版ずれの最悪形）。
  *   版が変われば別キャッシュになり、activate で古いものを消す。
  */
-const VERSION = '2026-09-30 4cbdc88';
+const VERSION = '2026-10-01 728e0a2';
 const CACHE = 'er-monshin-' + VERSION;
 
 const ASSETS = [
@@ -39,8 +39,8 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      // CACHE 以外は全部消す。共有の受け渡し用（SHARE_CACHE）もここで消えるが、
-      // それでよい。取り出されないまま残った患者情報を端末に残さないため。
+      // CACHE 以外は全部消す。旧版（〜f5b4079）が共有の受け渡しに使っていた
+      // 'er-monshin-share' に取り出されないまま残った患者情報も、ここで消える。
       .then((keys) => Promise.all(
         keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))
       ))
@@ -55,10 +55,20 @@ self.addEventListener('activate', (e) => {
  * ★GET ではなく POST にしてある。GET だと共有された文章が URL に載り、
  *   閲覧履歴に患者情報が残る。POST ならここで受けるので URL には出ない。
  *
- * ★受け渡しに使うキャッシュは資産用とは別にし、ページ側が読んだ時点で消す。
- *   患者情報を端末に残さないため。取り出せないまま終わった分は activate でも消す。 */
-const SHARE_CACHE = 'er-monshin-share';
-const SHARE_KEY = '/__shared__';   // ルート配信前提（SWもページも同じ絶対パスで引ける）
+ * ★受け取った文章はストレージ（Cache Storage 等）に書かない。SW のメモリにだけ置き、
+ *   1回限りの番号を付けてページへ渡す。ページが番号で取りに来たら渡して即座に消す。
+ *   以前はキャッシュに書いていたため、受け取りに失敗すると期限なしで端末に残り、
+ *   連続して共有すると同じ置き場所を上書きしていた。
+ *   SW が止まればメモリごと消える（＝残らない）。そのときページは「もう一度共有して」と出す。 */
+const SHARE_TTL_MS = 60 * 1000;   // 取りに来ないまま残った分はこれで捨てる
+const pendingShares = new Map();  // id -> { text, at }
+
+function dropStaleShares() {
+  const now = Date.now();
+  for (const [id, v] of pendingShares) {
+    if (now - v.at > SHARE_TTL_MS) pendingShares.delete(id);
+  }
+}
 
 async function handleShare(request, url) {
   let text = '';
@@ -69,12 +79,21 @@ async function handleShare(request, url) {
   } catch (err) {
     /* 取り出せなくても画面は開く。黙って失敗させない方が現場で切り分けやすい */
   }
-  const cache = await caches.open(SHARE_CACHE);
-  await cache.put(SHARE_KEY, new Response(text, {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-  }));
-  return Response.redirect(new URL('./?shared=1', url).href, 303);
+  dropStaleShares();
+  const id = self.crypto.randomUUID();
+  pendingShares.set(id, { text: text, at: Date.now() });
+  return Response.redirect(new URL('./?shared=' + id, url).href, 303);
 }
+
+/* ページからの受け取り。渡したら消す（2回目は来ない）。 */
+self.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || d.type !== 'take-share' || !e.ports || !e.ports[0]) return;
+  dropStaleShares();
+  const v = pendingShares.get(d.id);
+  pendingShares.delete(d.id);
+  e.ports[0].postMessage({ text: v ? v.text : null });
+});
 
 /* cache-first。ページは通信しない作りなので、取りに行く理由が無い。 */
 self.addEventListener('fetch', (e) => {

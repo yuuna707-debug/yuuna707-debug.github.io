@@ -418,7 +418,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-09-30 4cbdc88</b>
+  版: <b>2026-10-01 728e0a2</b>
 </p>
 
 </div>
@@ -481,7 +481,7 @@ function _isCircledNumber(cp) {
  * そのまま通すと「①5mg」が「15mg」、「10³」が「103」になり、用量が黙って変わる。
  *   - 丸数字 → 「(1)」のように括弧で囲む（数字と繋がらない・どの Shift-JIS でも出る）
  *   - それ以外（上付き・下付き数字など）→ 原文のまま残す。cp932 に無いので
- *     encodeSJIS が '?' にして dropped に載せ、画面で警告される
+ *     encodeSJIS が 〓 にして dropped に載せ、画面で警告される
  * ㎎→mg・㈱→(株)・全角英数→半角のような意味を保つ変換は従来どおり。
  * gen_expected.py の normalize_sjis() と同じ規則にすること。
  */
@@ -500,45 +500,106 @@ function normalizeSJIS(s) {
   return out + run.normalize('NFKC');
 }
 
-/**
- * 文字列を Shift-JIS(cp932) バイト列にする。
- * 変換できない文字は '?' に置き換え、dropped に記録する（黙って消さない）。
- * @returns {{bytes:number[], dropped:{ch:string,index:number}[], normalized:string}}
- */
-function encodeSJIS(text, opts) {
-  opts = opts || {};
-  let s = String(text);
-  if (opts.normalize !== false) s = normalizeSJIS(s);
-  s = s.replace(/\r\n?/g, '\n');
+/** 変換できない文字の身代わり。〓(0x81AC, げた記号)。
+ *  '?' だと原文にもともとある「?」と見分けがつかない。〓 は JIS X 0208 にあり
+ *  どの Shift-JIS でも出るうえ、日本語の文書で「ここは字が出なかった」の慣習的な印。 */
+const SJIS_REPL = '〓';
+const SJIS_REPL_BYTES = [0x81, 0xac];
+
+/** 幅だけの変換（全角英数→半角・半角カナ→全角・全角空白→半角）は意味が変わらないので
+ *  「読み替えた文字」の一覧に出さない。出すと毎回並んで本当に見るべきものが埋もれる。 */
+function _isWidthOnly(cp) {
+  return (cp >= 0xff01 && cp <= 0xff5e) || (cp >= 0xff61 && cp <= 0xff9f) || cp === 0x3000;
+}
+
+function _applySubs(s) {
   // 正規化の「後」に置換する。NFKC は ￥(U+FFE5) を ¥(U+00A5, cp932不可) に変えるため。
   for (const from of Object.keys(SJIS_SUBS)) {
     if (s.indexOf(from) >= 0) s = s.split(from).join(SJIS_SUBS[from]);
   }
+  return s;
+}
 
+/* バイト列→文字の逆引き（「スキャナが送る文字列」を画面に出すため）。
+   SJIS_ALIAS の字（−〜 等）は同じバイトになるので、カルテには正準の字（－～）で入る。 */
+let _sjisRev = null;
+function sjisRev() {
+  if (_sjisRev) return _sjisRev;
+  const r = new Map();
+  const nt = _SJIS_TRAILS.length;
+  for (const [start, s] of SJIS_RUNS) {
+    for (let k = 0; k < s.length; k++) {
+      const idx = start + k;
+      const key = (_SJIS_LEADS[(idx / nt) | 0] << 8) | _SJIS_TRAILS[idx % nt];
+      if (!r.has(key)) r.set(key, s[k]);
+    }
+  }
+  _sjisRev = r;
+  return r;
+}
+
+/**
+ * 文字列を Shift-JIS(cp932) バイト列にする。
+ * 変換できない文字は 〓 に置き換え、dropped に記録する（黙って消さない）。
+ * @returns {{bytes:number[], dropped:{ch:string,index:number}[], normalized:string,
+ *            delivered:string, changed:{from:string,to:string}[]}}
+ *   delivered … バイト列をそのまま文字に戻したもの＝スキャナが実際に送る文字列
+ *   changed   … 正規化・置換で別の字に読み替えたもの（幅だけの変換は除く・重複なし）
+ */
+function encodeSJIS(text, opts) {
+  opts = opts || {};
+  const raw = String(text);
+  const prep = (x) => {
+    if (opts.normalize !== false) x = normalizeSJIS(x);
+    return _applySubs(x.replace(/\r\n?/g, '\n'));
+  };
+  const s = prep(raw);
+  const enc = _encodePrepared(s);
+
+  /* 読み替えた字の一覧。行き先は「実際にカルテへ入る字」で示す（正規化の途中の字ではない）。
+     ¼ は 1⁄4 ではなく 1〓4、− は －。全部が 〓 になる字は dropped の警告に出るので載せない。 */
+  const changed = [];
+  const seen = new Set();
+  for (const ch of raw) {
+    if (seen.has(ch) || ch === '\r' || _isWidthOnly(ch.codePointAt(0))) continue;
+    seen.add(ch);
+    const to = _encodePrepared(prep(ch)).delivered;
+    if (to !== ch && to !== SJIS_REPL) changed.push({ from: ch, to: to });
+  }
+  return { bytes: enc.bytes, dropped: enc.dropped, normalized: s,
+           delivered: enc.delivered, changed: changed };
+}
+
+/* 正規化・置換を済ませた文字列をバイト列にする（encodeSJIS の下請け） */
+function _encodePrepared(s) {
   const map = sjisMap();
+  const rev = sjisRev();
   const out = [];
   const dropped = [];
+  let delivered = '';
   let i = 0;
   for (const ch of s) {
     const cp = ch.codePointAt(0);
-    if (ch === '\n') {
-      out.push(0x0a);
-    } else if (cp < 0x80) {
+    if (ch === '\n' || cp < 0x80) {
       out.push(cp);
+      delivered += ch;
     } else if (cp >= 0xff61 && cp <= 0xff9f) {
       out.push(cp - 0xff61 + 0xa1); // 半角カナ（NFKC無効時のみ通る）
+      delivered += ch;
     } else {
       const pair = map.get(ch);
       if (pair) {
         out.push(pair[0], pair[1]);
+        delivered += rev.get((pair[0] << 8) | pair[1]) || ch;
       } else {
-        out.push(0x3f); // '?'
+        out.push(SJIS_REPL_BYTES[0], SJIS_REPL_BYTES[1]);
+        delivered += SJIS_REPL;
         dropped.push({ ch: ch, index: i });
       }
     }
     i += ch.length;
   }
-  return { bytes: out, dropped: dropped, normalized: s };
+  return { bytes: out, dropped: dropped, delivered: delivered };
 }
 
 /* ---------------- ガロア体 GF(256) ---------------- */
@@ -927,7 +988,7 @@ function maxBytes(version, ec) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { encodeSJIS, normalizeSJIS, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
+  module.exports = { encodeSJIS, normalizeSJIS, SJIS_REPL, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
 }
 
 </script>
@@ -1274,18 +1335,12 @@ PRESETS.forEach(([name, text]) => {
 });
 
 /* ---- 描画 ---- */
-/* enc.normalized は「?」に置き換える前の文字列なので、そのまま出すと
-   実際にカルテへ入るものと食い違う。dropped の位置を ? に潰して実物を出す。
+/* enc.normalized は「〓」に置き換える前の文字列なので、そのまま出すと
+   実際にカルテへ入るものと食い違う。バイト列から戻した enc.delivered（実物）を出す。
    絵文字なら実害は無いが、𠮷(つちよし)のような cp932 に無い人名異体字も
-   同じ経路で ? になる。プレビューが元の字を見せ続けると画面上で気づけない。 */
+   同じ経路で 〓 になる。プレビューが元の字を見せ続けると画面上で気づけない。 */
 function deliveredText(enc) {
-  if (!enc.dropped.length) return enc.normalized;
-  let r = '', prev = 0;
-  for (const d of enc.dropped) {
-    r += enc.normalized.slice(prev, d.index) + '?';
-    prev = d.index + d.ch.length;
-  }
-  return r + enc.normalized.slice(prev);
+  return enc.delivered;
 }
 
 function drawQR(res, scale) {
@@ -1372,7 +1427,7 @@ function render() {
   if (enc.dropped.length) {
     const list = [...new Set(enc.dropped.map((d) => d.ch))].join(' ');
     alerts.push(['warn', 'Shift-JISに変換できない文字が ' + enc.dropped.length +
-      ' 個あり「?」に置き換えました → ' + list +
+      ' 個あり「〓」に置き換えました → ' + list +
       '　※薬剤名にこれが出た場合は原本で確認してください。']);
   }
 
