@@ -97,9 +97,11 @@
     <div>
       <label for="nl">改行の扱い</label>
       <select id="nl">
-        <option value="bar" selected>| に置き換える（推奨）</option>
+        <option value="cr" selected>改行コード CR（推奨）</option>
+        <option value="crlf">改行コード CR+LF</option>
+        <option value="bar">| に置き換える</option>
         <option value="sp">半角空白に置き換える</option>
-        <option value="keep">そのまま（★実機で消えます）</option>
+        <option value="keep">改行コード LF（★実機で消えた）</option>
       </select>
     </div>
     <div>
@@ -157,7 +159,7 @@
 <p class="foot">
   このページは通信しません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-10-01 728e0a2</b>
+  版: <b>2026-10-02 4319e96</b>
 </p>
 
 </div>
@@ -235,6 +237,11 @@ function _isCircledNumber(cp) {
  * gen_expected.py の normalize_sjis() と同じ規則にすること。
  */
 function normalizeSJIS(s) {
+  // 仮名の直後の単独の濁点・半濁点（゛U+309B ゜U+309C）は結合用（U+3099/U+309A）にして前の字と合わせる。
+  // OCR がこの形で返すことがあり、NFKC は単独の ゛゜ を「空白＋結合用」に分けるため
+  // 「ロキソフ゜ロフェン」が「ロキソフ 〓ロフェン」になっていた。
+  s = String(s).replace(/([ぁ-ゖァ-ヺ])゛/g, '$1゙')
+               .replace(/([ぁ-ゖァ-ヺ])゜/g, '$1゚');
   let out = '', run = '';
   for (const ch of s) {
     const k = ch.normalize('NFKC');
@@ -300,7 +307,8 @@ function encodeSJIS(text, opts) {
   const raw = String(text);
   const prep = (x) => {
     if (opts.normalize !== false) x = normalizeSJIS(x);
-    return _applySubs(x.replace(/\r\n?/g, '\n'));
+    // 既定は CR+LF・CR を LF にそろえる。keepCR のときだけ CR を残す（CR / CR+LF を実機で試すため）
+    return _applySubs(opts.keepCR ? x : x.replace(/\r\n?/g, '\n'));
   };
   const s = prep(raw);
   const enc = _encodePrepared(s);
@@ -774,16 +782,14 @@ function splitText(text, maxChars, sep) {
   if (!text) return [];
   const limit = Math.max(1, maxChars);
 
-  const boundary = new Set(['。']);
   // ★ hotlinedx は「。」と改行を境界にするが、この画面では改行が先に区切り文字へ
   //   置換されている。境界に加えないと長文が「1文」扱いになり、文の途中で切れる。
-  if (sep) for (const ch of sep) boundary.add(ch);
-
+  //   区切りが2文字（CR+LF）のときは、2文字そろった所だけを境界にする（CR と LF の間で割らない）。
   const sentences = [];
   let cur = '';
   for (const ch of text) {          // コードポイント単位（サロゲートペアを割らない）
     cur += ch;
-    if (boundary.has(ch)) { sentences.push(cur); cur = ''; }
+    if (ch === '。' || (sep && cur.endsWith(sep))) { sentences.push(cur); cur = ''; }
   }
   if (cur) sentences.push(cur);
 
@@ -808,6 +814,8 @@ function splitText(text, maxChars, sep) {
 function cutAt(s, limit) {
   const code = s.charCodeAt(limit - 1);
   if (code >= 0xd800 && code <= 0xdbff && limit > 1) return limit - 1;
+  // CR+LF の CR と LF の間でも割らない（割るとカルテで改行が崩れる）
+  if (s[limit - 1] === '\r' && s[limit] === '\n' && limit > 1) return limit - 1;
   return limit;
 }
 
@@ -850,9 +858,17 @@ if (typeof module !== 'undefined' && module.exports) {
 <script>
 const $ = (id) => document.getElementById(id);
 
-/* 改行はスキャナ→電子カルテで「そのまま消える」ことが実機で確認されている。
-   消えると前後の項目が繋がって誤読を招くので、既定で | に置き換える。 */
-const NL_REPL = { bar: '|', sp: ' ' };
+/* 改行コードの実機確認（L-46X→電子カルテ）:
+     LF … 丸ごと消え、前後の項目が繋がる（2026-07-31）
+     CR・CR+LF … どちらもカルテで改行になる（2026-10-02）
+   CR のほうが1行あたり1バイト少ないので既定にする。 */
+const NL_REPL = { bar: '|', sp: ' ', cr: '\r', crlf: '\r\n' };
+
+/* CR / CR+LF のときだけ、CR をそのまま QR に入れる（既定の変換は CR+LF・CR を LF にそろえる）。 */
+function keepCR() {
+  const m = $('nl').value;
+  return m === 'cr' || m === 'crlf';
+}
 
 function sourceText() {
   const raw = $('src').value;
@@ -933,8 +949,8 @@ function render() {
 
   /* 変換できない文字・読み替えた文字は文書全体で拾う（いま見ている1枚だけ見ても気づけない）。
      読み替えは正規化「前」の原文と比べないと分からないので、原文から取る。 */
-  const whole = encodeSJIS(sourceText());
-  const encs = chunks.map((c) => encodeSJIS(c));
+  const whole = encodeSJIS(sourceText(), { keepCR: keepCR() });
+  const encs = chunks.map((c) => encodeSJIS(c, { keepCR: keepCR() }));
   const totalBytes = encs.reduce((n, e) => n + e.bytes.length, 0);
 
   const alerts = [];
@@ -1008,8 +1024,8 @@ function render() {
       ' バイトまでです。読めない場合は誤り訂正を下げるか、全画面で大きく表示してください。']);
   }
   if ($('nl').value === 'keep' && /\r?\n/.test($('src').value)) {
-    alerts.push(['warn', '★改行は実機（L-46X→電子カルテ）で消えることを確認済みです。' +
-      '前後の項目が繋がって誤読を招くため、「| に置き換える」を使ってください。' +
+    alerts.push(['warn', '★改行コード LF は実機（L-46X→電子カルテ）で消えることを確認済みです。' +
+      '前後の項目が繋がって誤読を招くため、「改行コード CR」を使ってください。' +
       '分割したときは順序ヘッダの区切りも消えます。']);
   }
   if (whole.dropped.length) {

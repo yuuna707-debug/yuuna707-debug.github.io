@@ -418,7 +418,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-10-01 728e0a2</b>
+  版: <b>2026-10-02 4319e96</b>
 </p>
 
 </div>
@@ -486,6 +486,11 @@ function _isCircledNumber(cp) {
  * gen_expected.py の normalize_sjis() と同じ規則にすること。
  */
 function normalizeSJIS(s) {
+  // 仮名の直後の単独の濁点・半濁点（゛U+309B ゜U+309C）は結合用（U+3099/U+309A）にして前の字と合わせる。
+  // OCR がこの形で返すことがあり、NFKC は単独の ゛゜ を「空白＋結合用」に分けるため
+  // 「ロキソフ゜ロフェン」が「ロキソフ 〓ロフェン」になっていた。
+  s = String(s).replace(/([ぁ-ゖァ-ヺ])゛/g, '$1゙')
+               .replace(/([ぁ-ゖァ-ヺ])゜/g, '$1゚');
   let out = '', run = '';
   for (const ch of s) {
     const k = ch.normalize('NFKC');
@@ -551,7 +556,8 @@ function encodeSJIS(text, opts) {
   const raw = String(text);
   const prep = (x) => {
     if (opts.normalize !== false) x = normalizeSJIS(x);
-    return _applySubs(x.replace(/\r\n?/g, '\n'));
+    // 既定は CR+LF・CR を LF にそろえる。keepCR のときだけ CR を残す（CR / CR+LF を実機で試すため）
+    return _applySubs(opts.keepCR ? x : x.replace(/\r\n?/g, '\n'));
   };
   const s = prep(raw);
   const enc = _encodePrepared(s);
