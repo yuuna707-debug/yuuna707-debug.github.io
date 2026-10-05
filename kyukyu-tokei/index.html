@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>救急時計（練習用）</title><meta name="robots" content="noindex,nofollow"><meta name="build-rev" content="4207720"><style>:root {
+  --bg:#1B1B2F; --panel:#24243A; --accent:#0F3460; --red:#FF3B30; --green:#00FF7F; --yellow:#FFC107; --orange:#FF8C00; --white:#F0F0F0; --gray:#AAAAAA; --darkgray:#333344; --text-muted:#9BA3C0; --error-bg:#B3261E; --banner-top:6px; --banner-gap:4px; --banner-radius:6px; --banner-max-w:min(900px,92vw);
+  --btn-rosc:#1A6B4A; --btn-mag:#1A5C3A; --bicarb:#1A6BBF; --calcium:#7B2D8B; --saline:#2A9D8F; --crystalloid:#1D7A8C; --iv:#4361EE; --intubation:#7209B7; --pacing:#3A0CA3; --airway:#560BAD; --ultrasound:#06D6A0; --ecg:#1A7ABF; --gas:#8338EC; --proc:#4CC9F0; --ht:#B5838D; --log-bg:#0D0D1A; --input-bg:#FFFFFF; --input-fg:#111111; --backdrop:#00000088;
+  --font-ui:"Yu Gothic UI","Meiryo","Hiragino Sans",system-ui,sans-serif; --font-mono:"Consolas","Menlo","Courier New",monospace;
+  --font-body:14px; --font-clock:52px; --font-timer:44px; --font-btn:16px; --font-large-btn:21px; --font-rhythm:20px; --font-ht:16px; --font-log:16px; --font-dose:12px; --font-small:13px;
+  --gap:6px; --pad-panel:6px; --pad-app:8px; --pad-control:6px; --btn-h:44px; --btn-radius:2px; --border:1px; --focus-width:3px; --focus-offset:2px;
+  --col-left:360px; --col-mid:460px; --col-log-min:260px; --cols-med:2; --cols-procedure:2; --cols-rhythm:2; --cols-ht:2; --cols-notes:3; --cols-clock:4; --status-w:140px;
+  --letter-spacing-ui:0px; --line-height-log:1.55; --line-height-ui:1.35; --weight-bold:700; --fill:100%; --zero:0px; --viewport-h:100dvh;
+  --memo-w:460px; --memo-h:420px; --memo-right:40px; --memo-bottom:80px; --memo-min-w:250px; --memo-min-h:230px; --memo-z:20; --dialog-z:30; --toast-z:100;
+  --memo-max-w:calc(100vw - 16px); --memo-max-h:calc(100dvh - 16px); --memo-text-min:70px;
+  --dialog-w:640px; --export-w:850px; --preview-h:450px; --dialog-max-w:calc(100vw - 24px); --dialog-max-h:calc(100dvh - 24px); --dialog-pad:16px; --shadow:0 8px 30px #00000088;
+  --patient-w:200px; --input-gap:8px; --timeline-pad:8px; --cancel-w:140px; --toast-bottom:16px; --toast-left:50%; --toast-shift:-50%; --max-toast-w:90vw;
+  --compact-left:310px; --compact-mid:410px; --compact-font-ht:14px; --mobile-timer:28px; --mobile-clock:30px; --mobile-cols:1; --mobile-clock-cols:2; --mobile-min-timeline:300px; --export-top:12px;
+}
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+html,body { margin:var(--zero); height:var(--fill); }
+body { background:var(--bg); color:var(--white); font-family:var(--font-ui); font-size:var(--font-body); line-height:var(--line-height-ui); letter-spacing:var(--letter-spacing-ui); display:flex; flex-direction:column; overflow:hidden; }
+button,input,textarea,select { font:inherit; }
+button { min-height:var(--btn-h); color:var(--white); border:var(--zero); border-radius:var(--btn-radius); padding:var(--pad-control); cursor:pointer; font-weight:var(--weight-bold); font-size:var(--font-btn); touch-action:manipulation; user-select:none; }
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible { outline:var(--focus-width) solid var(--white); outline-offset:var(--focus-offset); }
+input,textarea,select { background:var(--input-bg); color:var(--input-fg); border:var(--border) solid var(--gray); padding:var(--pad-control); min-width:var(--zero); }
+input:not([type=radio]):not([type=checkbox]),select { min-height:var(--btn-h); }
+input[type=radio],input[type=checkbox] { accent-color:var(--accent); flex-shrink:0; }
+label { display:flex; align-items:center; gap:var(--gap); min-height:var(--btn-h); }
+/* 帯は画面の流れに入れない。出る・消えるたびに画面がずれると、押そうとしたボタンから外れてクリックが効かなくなる */
+#banners { position:fixed; top:var(--banner-top); left:50%; transform:translateX(-50%); z-index:var(--toast-z); display:flex; flex-direction:column; gap:var(--banner-gap); width:max-content; max-width:var(--banner-max-w); pointer-events:none; text-align:center; }
+#banners>div { padding:var(--pad-control); background:var(--accent); border-radius:var(--banner-radius); }
+#banners>div.error { background:var(--error-bg); color:var(--white); font-weight:var(--weight-bold); }
+#banners>#practice { background:var(--orange); color:var(--bg); font-weight:var(--weight-bold); }
+.error { background:var(--red); color:var(--white); font-weight:var(--weight-bold); }
+#app { display:flex; flex-direction:column; gap:var(--gap); padding:var(--pad-app); min-height:var(--zero); flex:1; }
+.patient,.clocks,.bottom { background:var(--panel); padding:var(--pad-panel); flex-shrink:0; }
+.patient { display:flex; gap:var(--input-gap); flex-wrap:wrap; }
+.patient input { width:var(--patient-w); }
+.clocks { display:grid; grid-template-columns:repeat(var(--cols-clock),minmax(var(--zero),1fr)) var(--status-w); align-items:stretch; }
+.clock-box { text-align:center; min-width:var(--zero); }
+.clock-heading { color:var(--gray); font-weight:var(--weight-bold); }
+.timer { font:var(--weight-bold) var(--font-timer)/var(--line-height-ui) var(--font-mono); white-space:nowrap; color:var(--gray); }
+#current { color:var(--white); font-size:var(--font-clock); }
+.status { font-size:var(--font-large-btn); font-weight:var(--weight-bold); padding:var(--pad-control); margin:var(--gap); }
+.body { display:grid; grid-template-columns:var(--col-left) var(--col-mid) minmax(var(--col-log-min),1fr); gap:var(--gap); min-height:var(--zero); flex:1; overflow:auto; }
+.panel { background:var(--panel); padding:var(--pad-panel); min-width:var(--zero); }
+h2 { font-size:var(--font-btn); margin:var(--gap) var(--zero); background:var(--accent); padding:var(--pad-control); }
+.left>button { display:block; width:var(--fill); margin-bottom:var(--gap); font-size:var(--font-large-btn); }
+.rhythms,.ht,.meds,.procedures,.quick-notes { display:grid; gap:var(--gap); }
+.rhythms { grid-template-columns:repeat(var(--cols-rhythm),minmax(var(--zero),1fr)); font-size:var(--font-rhythm); }
+.ht { grid-template-columns:repeat(var(--cols-ht),minmax(var(--zero),1fr)); font-size:var(--font-ht); font-weight:var(--weight-bold); }
+.meds { grid-template-columns:repeat(var(--cols-med),minmax(var(--zero),1fr)); }
+.med button { width:var(--fill); }
+.dose { font-size:var(--font-dose); color:var(--gray); text-align:center; }
+.last-dose { font-size:var(--font-small); text-align:center; }
+.unused { color:var(--text-muted); }
+.procedures { grid-template-columns:repeat(var(--cols-procedure),minmax(var(--zero),1fr)); }
+.count { text-align:center; font-weight:var(--weight-bold); }
+.right { display:flex; flex-direction:column; min-height:var(--zero); }
+.timeline { flex:1; overflow:auto; background:var(--log-bg); padding:var(--timeline-pad); font:var(--font-log)/var(--line-height-log) var(--font-mono); }
+.timeline-row { white-space:pre-wrap; overflow-wrap:anywhere; position:relative; }
+.timeline-row button { display:none; font:var(--font-small)/var(--line-height-ui) var(--font-ui); }
+.timeline-row:hover button,.timeline-row:focus-within button { display:inline-block; }
+.timeline-row { color:var(--white); }
+.timeline-row[data-kind=cpr],.timeline-row[data-kind=arrival],.timeline-row[data-kind=rosc] { color:var(--green); }
+.timeline-row[data-kind=rhythm] { color:var(--gray); }
+.timeline-row[data-kind=shock],.timeline-row[data-kind=system] { color:var(--orange); }
+.timeline-row[data-kind=med] { color:var(--yellow); }
+.timeline-row[data-kind=med_epi] { color:var(--red); }
+.timeline-row[data-kind=proc] { color:var(--proc); }
+.timeline-row[data-kind=ht] { color:var(--ht); }
+.timeline-row.cancelled { color:var(--text-muted); text-decoration:line-through; }
+.bottom { display:flex; flex-wrap:wrap; align-items:center; gap:var(--gap); font-size:var(--font-small); }
+.disclaimer { margin-left:auto; color:var(--gray); }
+.memo { position:fixed; right:var(--memo-right); bottom:var(--memo-bottom); width:var(--memo-w); height:var(--memo-h); min-width:var(--memo-min-w); min-height:var(--memo-min-h); max-width:var(--memo-max-w); max-height:var(--memo-max-h); z-index:var(--memo-z); background:var(--panel); box-shadow:var(--shadow); border:var(--border) solid var(--gray); padding:var(--pad-panel); resize:both; overflow:auto; display:flex; flex-direction:column; gap:var(--gap); }
+.memo-head,.dialog-head { display:flex; align-items:center; justify-content:space-between; gap:var(--gap); }
+.memo-head { cursor:move; touch-action:none; background:var(--accent); }
+.quick-notes { grid-template-columns:repeat(var(--cols-notes),minmax(var(--zero),1fr)); }
+.quick-notes button { font-size:var(--font-small); }
+.memo-input { width:var(--fill); flex:1; min-height:var(--memo-text-min); resize:none; }
+dialog { color:var(--white); background:var(--panel); border:var(--border) solid var(--gray); padding:var(--dialog-pad); width:var(--dialog-w); max-width:var(--dialog-max-w); max-height:var(--dialog-max-h); overflow:auto; z-index:var(--dialog-z); box-shadow:var(--shadow); }
+dialog::backdrop { background:var(--backdrop); }
+dialog:has(.export-body) { width:var(--export-w); top:var(--export-top); }
+.notes-body,.settings-body { display:flex; flex-direction:column; gap:var(--gap); }
+.notes-body input,.settings-body input,.settings-body select { flex:1; }
+.settings-body label { flex-wrap:wrap; justify-content:space-between; }
+.export-options { display:flex; flex-wrap:wrap; gap:var(--gap); }
+.preview { display:block; width:var(--fill); height:var(--preview-h); font-family:var(--font-mono); margin-block:var(--gap); }
+.case-row { display:flex; flex-wrap:wrap; align-items:center; gap:var(--gap); margin-block:var(--gap); }
+.confirm-body button { margin-right:var(--gap); }
+#toast { position:fixed; z-index:var(--toast-z); bottom:var(--toast-bottom); left:var(--toast-left); transform:translateX(var(--toast-shift)); max-width:var(--max-toast-w); padding:var(--dialog-pad); background:var(--accent); border:var(--border) solid var(--gray); box-shadow:var(--shadow); }
+/* Media-query thresholds cannot use CSS custom properties in current browsers. */
+@media (max-width:1500px) { .body { --col-left:var(--compact-left); --col-mid:var(--compact-mid); } .ht { font-size:var(--compact-font-ht); } }
+@media (max-width:1050px) { .body { grid-template-columns:repeat(var(--mobile-cols),minmax(var(--zero),1fr)); } .right { min-height:var(--mobile-min-timeline); } .clocks { grid-template-columns:repeat(var(--mobile-clock-cols),minmax(var(--zero),1fr)); } .timer { font-size:var(--mobile-timer); } #current { font-size:var(--mobile-clock); } .clock-box:last-child { grid-column:1 / -1; } .status { margin:var(--zero); } .patient label { flex:1; } .patient input { width:var(--fill); } }
+@media (hover:none) { .timeline-row button { display:inline-block; } }
+</style></head>
+<body><div id="banners" role="status"><div id="practice">練習用です。実際の患者さんの情報は入力しないでください（版 4207720）</div><div id="save-error" class="error" hidden>記録を保存できません。この画面を閉じると記録が失われます</div><div id="activation" hidden>音声を有効にするには、画面のどこかを一度タップしてください</div><div id="voice-warning" hidden>日本語の音声が見つかりません。ビープ音で代用します</div></div>
+<div id="app" hidden></div><div id="toast" role="status" hidden></div>
+<noscript>救急時計を使用するにはJavaScriptを有効にしてください。</noscript>
+<script>'use strict';
+const ClockLogic = (() => {
+  const CPR_CYCLE_SEC=120, EPI_CONFIRM_SEC=150, CYCLE_WARN_SEC=30, CYCLE_ALERT_SEC=15, QUICK_NOTES_MAX=15, RESUME_WINDOW_H=6;
+  const COLORS={red:'#FF3B30',green:'#00FF7F',yellow:'#FFC107',orange:'#FF8C00',gray:'#AAAAAA'};
+  const KIND_COLORS={cpr:COLORS.green,arrival:COLORS.green,rosc:COLORS.green,rhythm:COLORS.gray,shock:COLORS.orange,med:COLORS.yellow,med_epi:COLORS.red,proc:'#4CC9F0',ht:'#B5838D',memo:'#F0F0F0',system:COLORS.orange};
+  const KIND_JA={cpr:'CPR',arrival:'CPR',rosc:'CPR',rhythm:'リズム',shock:'除細動',med:'薬剤',med_epi:'薬剤',proc:'処置',ht:'原因',memo:'メモ',system:'システム'};
+  const pad=n=>String(n).padStart(2,'0');
+  const second=value=>Math.floor(Number(value)/1000)*1000;
+  function iso(value){const d=new Date(value);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${hms(d)}`;}
+  function hms(value){const d=new Date(value);return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;}
+  function stamp(value){return iso(value).replaceAll('-','').replace('T','_').replaceAll(':','');}
+  function mmss(value){const s=Math.max(0,Math.trunc(value));return `${pad(Math.floor(s/60))}:${pad(s%60)}`;}
+  const seconds=(a,b)=>Math.trunc((Number(a)-Number(b))/1000);
+  const completed_cycle_point=(start,now)=>start===null?0:Math.floor(Math.max(0,seconds(now,start))/120)*120;
+  const patient_changed=(a,b)=>a.length!==b.length||a.some((v,i)=>v!==b[i]);
+  function epi_color(sec,target,running=true){const effective=target===3?3:target===5?5:4;return !running?COLORS.gray:sec<effective*60?COLORS.orange:sec<=(effective===5?360:300)?COLORS.green:COLORS.red;}
+  const epi_should_notify=(sec,target,notified,running=true)=>running&&!notified&&sec>=target*60;
+  // Python str() semantics for JSON values in quick_notes.
+  function pystr(x,nested=false){if(x===null)return 'None';if(typeof x==='boolean')return x?'True':'False';if(typeof x==='string')return nested?`'${x.replaceAll('\\','\\\\').replaceAll("'","\\'")}'`:x;if(Array.isArray(x))return '['+x.map(v=>pystr(v,true)).join(', ')+']';if(typeof x==='object')return '{'+Object.entries(x).map(([k,v])=>pystr(k,true)+': '+pystr(v,true)).join(', ')+'}';return String(x);}
+  function normalized_settings(raw){
+    const out={sound_enabled:true,epi_target_min:4,epi_announce_text:'じかん、です',cycle_announce_text:'リズムチェック',quick_notes:['家族到着','家族へ説明','DNAR確認','他院より情報あり','蘇生中止を相談'],memo_window:{x:null,y:null,w:460,h:420},speech_rate:1.25,speech_voice:'',retention_days:7};
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))return out;
+    if(typeof raw.sound_enabled==='boolean')out.sound_enabled=raw.sound_enabled;
+    if([3,4,5].includes(raw.epi_target_min))out.epi_target_min=raw.epi_target_min;
+    for(const k of ['epi_announce_text','cycle_announce_text'])if(typeof raw[k]==='string'&&raw[k].trim())out[k]=raw[k];
+    if(Array.isArray(raw.quick_notes))out.quick_notes=raw.quick_notes.map(x=>pystr(x)).filter(x=>x.trim()).slice(0,15);
+    if(raw.memo_window&&typeof raw.memo_window==='object'&&!Array.isArray(raw.memo_window))for(const k of ['x','y','w','h'])if(Object.hasOwn(raw.memo_window,k))out.memo_window[k]=raw.memo_window[k];
+    if(typeof raw.speech_rate==='number'&&raw.speech_rate>=0.5&&raw.speech_rate<=2)out.speech_rate=raw.speech_rate;
+    if(typeof raw.speech_voice==='string')out.speech_voice=raw.speech_voice;
+    if(Number.isInteger(raw.retention_days)&&raw.retention_days>=0&&raw.retention_days<=90)out.retention_days=raw.retention_days;
+    return out;
+  }
+  function parseRows(text){return text.split('\n').flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});}
+  function foldRows(rows){
+    const s={session:null,patient_id:'',patient_name:'',events:[],cancelled:new Set(),next_seq:1};
+    for(const r of rows){if(r.t==='session')s.session=r;else if(r.t==='patient'){s.patient_id=r.patient_id??'';s.patient_name=r.patient_name??'';}else if(r.t==='event')s.events.push(r);else if(r.t==='cancel')s.cancelled.add(r.seq);else if(r.t==='uncancel')s.cancelled.delete(r.seq);}
+    s.next_seq=Math.max(0,...s.events.map(e=>Number(e.seq||0)))+1;return s;
+  }
+  function elapsed_for(e,start){if(start===null)return null;const v=seconds(new Date(e.at),start);return v>=0?v:null;}
+  const first_event=(events,label)=>events.find(e=>e.label===label);
+  const active_events=(s,include=false)=>s.events.filter(e=>include||!s.cancelled.has(e.seq));
+  function format_line(e,start){const elapsed=elapsed_for(e,start),prefix=hms(e.at)+(elapsed===null?'':` (+${mmss(elapsed)})`);return (prefix.padEnd(20,' ')+' '+(e.label||'')+(e.detail?'  '+e.detail:'')).trimEnd();}
+  function export_progress(s,exclude=true){const events=active_events(s,!exclude),cpr=first_event(events,'CPR開始');return events.map(e=>format_line(e,cpr?new Date(cpr.at):null)).join('\n');}
+  function export_summary(s,exclude=true,version='1.0'){
+    const events=active_events(s,!exclude),cpr=first_event(events,'CPR開始'),cpa=first_event(events,'CPA確認'),rosc=first_event(events,'ROSC'),ended=first_event(events,'CPR終了'),start=cpr?new Date(cpr.at):null;
+    const lines=['【心肺蘇生 経過記録】'],bits=[];if(s.patient_id)bits.push('患者ID: '+s.patient_id);if(s.patient_name)bits.push('氏名: '+s.patient_name);if(bits.length)lines.push(bits.join('  '));
+    const heads=[['CPA確認',cpa],['CPR開始',cpr],['ROSC',rosc],['CPR終了',rosc?null:ended]].filter(([,e])=>e).map(([n,e])=>n+' '+hms(e.at));if(heads.length)lines.push(heads.join(' ／ '));
+    const stats=[],finish=rosc||ended;if(cpr&&finish)stats.push('CPR時間 '+mmss(seconds(new Date(finish.at),start)));stats.push(`除細動 ${events.filter(e=>e.kind==='shock').length}回`,`アドレナリン ${events.filter(e=>e.kind==='med_epi').length}回`);
+    lines.push(stats.join('　'),'');lines.push(...events.map(e=>format_line(e,start)),'',`（救急時計 v${version} で記録）`);return lines.join('\n');
+  }
+  function write_csv(s){const cpr=first_event(s.events,'CPR開始'),start=cpr?new Date(cpr.at):null,rows=[['患者ID','氏名','時刻','CPR経過','種別','内容','詳細','取消']];for(const e of s.events){const elapsed=elapsed_for(e,start);rows.push([s.patient_id,s.patient_name,hms(e.at),elapsed===null?'':mmss(elapsed),KIND_JA[e.kind]||e.kind,e.label,e.detail||'',s.cancelled.has(e.seq)?'取消':'']);}return '\uFEFF'+rows.map(row=>row.map(v=>/[,"\r\n]/.test(v)?'"'+v.replaceAll('"','""')+'"':v).join(',')+'\r\n').join('');}
+  function candidate(sessions,now){return sessions.map(({sid,rows})=>({sid,rows,state:foldRows(rows),last:new Date(rows.at(-1)?.at||rows.at(-1)?.started_at).getTime()})).filter(c=>c.state.session&&iso(c.last).slice(0,10)===iso(now).slice(0,10)&&now-c.last>=0&&now-c.last<=6*3600000).sort((a,b)=>b.last-a.last)[0]||null;}
+  function session_id(now,ids){const base=stamp(now).slice(0,13);let sid=base,i=2;while(ids.includes(sid))sid=base+'_'+i++;return sid;}
+  class Engine {
+    constructor({now=Date.now,append=()=>{},settings={}}={}){this.now=()=>second(now());this.append=append;this.settings=normalized_settings(settings);this.reset_state();}
+    reset_state(){Object.assign(this,{events:[],cancelled:new Set(),next_seq:1,patient_id:'',patient_name:'',cpr_start:null,cpr_stopped_at:null,cycle_start:null,last_cycle_point:0,cpr_running:false,last_epi:null,epi_beeped:false,shock_count:0,current_rhythm:'',last_patient_saved:['',''],status:'待機中'});}
+    state_data(){return {patient_id:this.patient_id,patient_name:this.patient_name,events:this.events,cancelled:this.cancelled};}
+    log_event(kind,label,detail='',at=this.now()){const row={t:'event',seq:this.next_seq++,at:iso(at),kind,label,detail};this.events.push(row);this.append(row);return row;}
+    save_patient(id,name,at=this.now()){const values=[id.trim(),name.trim()];[this.patient_id,this.patient_name]=values;if(!patient_changed(values,this.last_patient_saved))return false;this.append({t:'patient',patient_id:values[0],patient_name:values[1],at:iso(at)});this.last_patient_saved=values;return true;}
+    start_cpr(at=this.now()){if(this.cpr_running)return false;Object.assign(this,{cpr_start:at,cpr_stopped_at:null,cycle_start:at,last_cycle_point:0,cpr_running:true,status:'CPR実施中'});this.log_event('cpr','CPR開始','',at);return true;}
+    end_cpr(at=this.now()){if(!this.cpr_running)return;this.cpr_running=false;this.cpr_stopped_at=at;this.status='CPR終了';this.log_event('cpr','CPR終了','総時間 '+mmss(seconds(at,this.cpr_start)),at);}
+    rosc(at=this.now()){this.cpr_running=false;this.cpr_stopped_at=at;this.status='ROSC!';this.log_event('rosc','ROSC','',at);this.log_event('system','12誘導心電図 施行、低酸素/高酸素回避、体温管理療法を考慮','',at);}
+    set_rhythm(r,at=this.now()){this.current_rhythm=r;this.log_event('rhythm','リズム: '+r,'',at);}
+    shock(at=this.now()){this.shock_count++;this.cycle_start=at;this.last_cycle_point=0;this.log_event('shock',`除細動 #${this.shock_count}`+(this.current_rhythm?` (${this.current_rhythm})`:''),{1:'→ 直ちにCPR再開',2:'→ CPR再開＋アドレナリン投与推奨',3:'→ アミオダロン300mg またはリドカイン推奨'}[this.shock_count]||'',at);}
+    epi_interval(at=this.now()){return this.last_epi===null?null:seconds(at,this.last_epi);}
+    medication(name,dose,at=this.now()){let detail=dose;if(name==='アドレナリン'&&['VF','pVT'].includes(this.current_rhythm)&&this.shock_count<2)detail+=`　⚠ VF/pVTは2回目ショック後推奨（現在${this.shock_count}回）`;this.log_event(name==='アドレナリン'?'med_epi':'med',name,detail,at);if(name==='アドレナリン'){this.last_epi=at;this.epi_beeped=false;}}
+    set_cancel(seq,cancel,at=this.now()){this.append({t:cancel?'cancel':'uncancel',seq,at:iso(at)});if(cancel)this.cancelled.add(seq);else this.cancelled.delete(seq);this.refresh_last_epi(at);}
+    timeline_base(){const e=this.events.find(x=>x.label==='CPR開始'&&!this.cancelled.has(x.seq));return e?new Date(e.at).getTime():null;}
+    refresh_last_epi(at=this.now()){const last=this.events.findLast(e=>e.kind==='med_epi'&&!this.cancelled.has(e.seq)),next=last?new Date(last.at).getTime():null;if(next===this.last_epi)return;this.last_epi=next;this.epi_beeped=next!==null&&seconds(at,next)>=this.settings.epi_target_min*60;}
+    restore(s,at=this.now()){this.reset_state();Object.assign(this,{events:s.events,cancelled:new Set(s.cancelled),next_seq:s.next_seq,patient_id:s.patient_id,patient_name:s.patient_name});for(const e of this.events){const time=new Date(e.at).getTime();if(e.label==='CPR開始'){this.cpr_start=time;this.cycle_start=time;this.cpr_running=true;}else if(['CPR終了','ROSC'].includes(e.label)){this.cpr_running=false;this.cpr_stopped_at=time;}if(e.kind==='shock'){this.shock_count++;this.cycle_start=time;}if(e.kind==='rhythm')this.current_rhythm=e.label.replaceAll('リズム: ','');if(e.kind==='med_epi'&&!this.cancelled.has(e.seq))this.last_epi=time;}this.status=this.cpr_running?'CPR実施中':first_event(this.events,'ROSC')?'ROSC!':'CPR終了';this.last_patient_saved=[s.patient_id,s.patient_name];this.last_cycle_point=completed_cycle_point(this.cycle_start,at);}
+    tick_at(at=this.now()){const result={current:hms(at),cpr:'--:--',cycle:'--:--',epi:'--:--',cycleColor:COLORS.gray,epiColor:COLORS.gray,notifications:[]};if(this.cpr_start!==null)result.cpr=mmss(seconds(this.cpr_stopped_at??at,this.cpr_start));if(this.cpr_running&&this.cycle_start!==null){const passed=Math.max(0,seconds(at,this.cycle_start)),remain=120-passed%120,point=Math.floor(passed/120)*120;result.cycle=mmss(remain);result.cycleColor=remain<=15?COLORS.red:remain<=30?COLORS.yellow:COLORS.green;if(point&&point!==this.last_cycle_point){this.log_event('system','── 2分経過 ── リズムチェック / パルスチェック','',at);result.notifications.push('cycle');this.last_cycle_point=point;}}if(this.last_epi!==null){const sec=Math.max(0,seconds(this.cpr_running?at:(this.cpr_stopped_at??at),this.last_epi));result.epi=mmss(sec);result.epiColor=epi_color(sec,this.settings.epi_target_min,this.cpr_running);if(epi_should_notify(sec,this.settings.epi_target_min,this.epi_beeped,this.cpr_running)){result.notifications.push('epi');this.epi_beeped=true;}}return result;}
+  }
+  return {CPR_CYCLE_SEC,EPI_CONFIRM_SEC,CYCLE_WARN_SEC,CYCLE_ALERT_SEC,QUICK_NOTES_MAX,RESUME_WINDOW_H,COLORS,KIND_COLORS,KIND_JA,second,iso,hms,stamp,mmss,completed_cycle_point,patient_changed,epi_color,epi_should_notify,normalized_settings,parseRows,foldRows,elapsed_for,format_line,export_progress,export_summary,write_csv,candidate,session_id,Engine};
+})();
+if(typeof module!=='undefined'&&module.exports)module.exports=ClockLogic;
+
+'use strict';
+const ClockStore = (() => {
+  const L=typeof module!=='undefined'&&module.exports?require('./logic.js'):ClockLogic;
+  const clone=x=>structuredClone(x);
+  class MemoryBackend {
+    constructor(){this.rows=[];this.settings=null;}
+    async open(){} async probe(){}
+    async all(){return clone(this.rows);}
+    async append(sid,row){this.rows.push({sid,row:clone(row)});}
+    async loadSettings(){return clone(this.settings);}
+    async saveSettings(value){this.settings=clone(value);}
+    async deleteSession(sid){this.rows=this.rows.filter(x=>x.sid!==sid);}
+  }
+  class IndexedBackend {
+    async open(){this.db=await new Promise((resolve,reject)=>{const r=indexedDB.open('kyukyu-tokei',1);r.onupgradeneeded=()=>{const db=r.result;db.createObjectStore('rows',{autoIncrement:true}).createIndex('sid','sid');db.createObjectStore('settings');};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('blocked'));});}
+    transaction(name,mode,operation){return new Promise((resolve,reject)=>{let tx;try{try{tx=this.db.transaction(name,mode,{durability:'strict'});}catch{tx=this.db.transaction(name,mode);}let result;operation(tx.objectStore(name),value=>{result=value;});tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('aborted'));}catch(e){reject(e);}});}
+    async probe(){await this.transaction('settings','readwrite',s=>{s.put(true,'probe');s.delete('probe');});}
+    all(){return this.transaction('rows','readonly',(s,done)=>{const r=s.getAll();r.onsuccess=()=>done(r.result);});}
+    append(sid,row){return this.transaction('rows','readwrite',s=>s.add({sid,row}));}
+    loadSettings(){return this.transaction('settings','readonly',(s,done)=>{const r=s.get('current');r.onsuccess=()=>done(r.result);});}
+    saveSettings(value){return this.transaction('settings','readwrite',s=>s.put(value,'current'));}
+    deleteSession(sid){return this.transaction('rows','readwrite',s=>{const r=s.index('sid').openCursor(IDBKeyRange.only(sid));r.onsuccess=()=>{const c=r.result;if(c){c.delete();c.continue();}};});}
+  }
+  // Memory is always the live mirror. A failed write never blocks recording.
+  // Queue includes deletions/settings so an older pending write cannot resurrect a deleted case.
+  class Repository {
+    constructor(backend,onFailure=()=>{},onSaved=()=>{}){this.backend=backend;this.onFailure=onFailure;this.onSaved=onSaved;this.memory=new MemoryBackend();this.queue=Promise.resolve();this.failed=false;}
+    fail(){this.failed=true;this.onFailure();}
+    async init(){try{await this.backend.open();this.memory.rows=await this.backend.all();this.memory.settings=await this.backend.loadSettings();await this.backend.probe();}catch{this.fail();}return L.normalized_settings(this.memory.settings);}
+    enqueue(fn){this.queue=this.queue.then(async()=>{try{await fn();if(!this.failed)this.onSaved();}catch{this.fail();}});return this.queue;}
+    append(sid,row){this.memory.append(sid,row);return this.enqueue(()=>this.backend.append(sid,row));}
+    saveSettings(value){const normalized=L.normalized_settings(value);this.memory.saveSettings(normalized);return this.enqueue(()=>this.backend.saveSettings(normalized));}
+    sessions(){const map=new Map();for(const {sid,row} of this.memory.rows){if(!map.has(sid))map.set(sid,[]);map.get(sid).push(clone(row));}return [...map].map(([sid,rows])=>({sid,rows}));}
+    deleteSession(sid){this.memory.deleteSession(sid);return this.enqueue(()=>this.backend.deleteSession(sid));}
+    async prune(days,now,protectedIds=[]){if(!days)return;for(const s of this.sessions()){const last=s.rows.at(-1),time=new Date(last?.at||last?.started_at).getTime();if(!protectedIds.includes(s.sid)&&now-time>days*86400000)await this.deleteSession(s.sid);}}
+    jsonl(sid){return (this.sessions().find(s=>s.sid===sid)?.rows||[]).map(row=>JSON.stringify(row)+'\n').join('');}
+  }
+  return {MemoryBackend,IndexedBackend,Repository};
+})();
+if(typeof module!=='undefined'&&module.exports)module.exports=ClockStore;
+
+'use strict';
+(() => {
+  // Order, labels, doses and palette follow build_ui in the Python source.
+  const MEDS=[['アドレナリン','1mg IV/IO　3-5分毎','red'],['アミオダロン (アンカロン)','初回300mg → 追加150mg　除細動後','orange'],['リドカイン (キシロカイン)','1-1.5mg/kg　アミオダロン代替','yellow'],['マグネシウム (マグネゾール)','2g IV　TdP/低Mg','btn-mag'],['炭酸水素Na (メイロン)','1mEq/kg　高K/TCA/アシドーシス','bicarb'],['カルシウム (カルチコール)','塩化Ca 1g　高K/CCB中毒','calcium'],['ドーパミン','5-20μg/kg/min　ROSC後昇圧','accent'],['ノルアドレナリン','0.1-0.5μg/kg/min　ROSC後昇圧','accent'],['生理食塩水','輸液','saline'],['細胞外液 (ソルラクト)','輸液','crystalloid']];
+  const PROCEDURES=[['除細動器装着','orange'],['静脈路確保','iv'],['気管挿管','intubation'],['経皮ペーシング','pacing'],['声門上気道デバイス','airway'],['超音波(FOCUS)','ultrasound'],['12誘導心電図','ecg'],['血液ガス採取','gas'],['ECPR開始','red']];
+  const RHYTHMS=['VF','pVT','PEA','心静止','洞調律'];
+  const H_CAUSES=['低血液量(Hv)','低酸素(Hx)','アシドーシス(H⁺)','低/高K(K⁺)','低体温(Ht)'];
+  const T_CAUSES=['緊張性気胸(Tp)','タンポナーデ(Tt)','毒物/薬物(Tx)','肺血栓塞栓(PE)','冠動脈血栓(ACS)'];
+  const L=ClockLogic,$=id=>document.getElementById(id),now=()=>L.second(Date.now());
+  let engine,repo,settings,sid,patientJob,memoJob,toastJob,wake,utterance,audio,worker,hiddenAt=null;
+  let voices=[],lastRender='',pendingWrites=0;
+  const medLabels=new Map(),rhythmInputs=[],htInputs=[],dialogs=new Map();
+  function el(tag,text='',className='',parent){const n=document.createElement(tag);n.textContent=text;if(className)n.className=className;if(parent)parent.append(n);return n;}
+  function button(parent,text,action,color='accent'){const b=el('button',text,'',parent);b.type='button';b.style.backgroundColor=`var(--${color})`;b.addEventListener('click',()=>{const at=now();Promise.resolve(action(at)).catch(()=>toast('操作を完了できませんでした。'));});return b;}
+  function privateInput(input){input.autocomplete='off';input.spellcheck=false;input.setAttribute('autocapitalize','off');return input;}
+  function toast(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toastJob);toastJob=setTimeout(()=>$('toast').hidden=true,5000);}
+  function dialog(key,title,modal=true){if(dialogs.has(key))return dialogs.get(key);const d=el('dialog','','dialog',document.body);d.dataset.modal=String(modal);const bar=el('div','','dialog-head',d);el('strong',title,'',bar);button(bar,'×',()=>d.close());dialogs.set(key,d);return d;}
+  function open(d){if(!d.open){if(d.dataset.modal==='true')d.showModal();else d.show();}else d.focus();}
+  function ask(title,text){const d=dialog('confirm',title);if(d.open)return Promise.resolve(false);d.querySelector('strong').textContent=title;d.querySelector('.confirm-body')?.remove();const body=el('div','','confirm-body',d);el('p',text,'',body);return new Promise(resolve=>{let answer=false;const no=button(body,'いいえ',()=>d.close());no.autofocus=true;button(body,'はい',()=>{answer=true;d.close();});d.addEventListener('close',()=>resolve(answer),{once:true});open(d);no.focus();});}
+  function saveSettings(){settings=L.normalized_settings(settings);engine.settings=settings;void repo.saveSettings(settings);updateSettingsLabels();}
+  function append(row){pendingWrites++;updateSaveLabel();void repo.append(sid,row).then(()=>{pendingWrites--;updateSaveLabel();});}
+  function updateSaveLabel(){if($('saved'))$('saved').textContent=repo.failed?'保存できません':pendingWrites?'保存中…':'保存済み';}
+  function savePatient(at=now()){clearTimeout(patientJob);engine.save_patient($('pid').value,$('pname').value,at);}
+  function record(kind,label,detail='',at=now()){engine.log_event(kind,label,detail,at);render();}
+  function updateSettingsLabels(){if(!$('sound'))return;$('sound').textContent=settings.sound_enabled?'🔊 音 ON':'🔇 音 OFF';$('epi-heading').textContent=`アドレナリン経過 (目標${settings.epi_target_min}分)`;$('storage').textContent=`記録: このブラウザ内　保存期間: ${settings.retention_days?settings.retention_days+'日':'自動削除しない'}`;}
+  async function acquireWake(){try{if(!wake&&engine.cpr_running&&document.visibilityState==='visible'){const lock=await navigator.wakeLock?.request('screen');if(!engine.cpr_running){await lock?.release();return;}wake=lock;lock?.addEventListener('release',()=>{if(wake===lock)wake=null;});}}catch{}}
+  function releaseWake(){const lock=wake;wake=null;void lock?.release().catch(()=>{});}
+  function initAudio(){try{const AC=window.AudioContext||window.webkitAudioContext;if(AC){audio??=new AC();void audio.resume().catch(()=>{});}}catch{}}
+  function refreshVoices(){try{voices=window.speechSynthesis?.getVoices()||[];}catch{voices=[];}$('voice-warning').hidden=voices.some(v=>v.lang.toLowerCase().startsWith('ja'));if($('voice-select'))fillVoices($('voice-select'));}
+  function beep(count){try{initAudio();if(!audio)return;for(let i=0;i<count;i++){const oscillator=audio.createOscillator(),gain=audio.createGain(),start=audio.currentTime+i*0.25;oscillator.frequency.value=880;gain.gain.setValueAtTime(0.12,start);gain.gain.exponentialRampToValueAtTime(0.001,start+0.14);oscillator.connect(gain);gain.connect(audio.destination);oscillator.start(start);oscillator.stop(start+0.15);}}catch{}}
+  function speak(kind){if(!settings.sound_enabled)return;const text=settings[kind==='epi'?'epi_announce_text':'cycle_announce_text'].trim();if(!text)return;try{const ja=voices.filter(v=>v.lang.toLowerCase().startsWith('ja'));if(!ja.length){beep(kind==='epi'?3:2);return;}window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);utterance=u;u.lang='ja-JP';u.rate=settings.speech_rate;u.voice=voices.find(v=>v.voiceURI===settings.speech_voice)||ja.find(v=>v.localService)||ja[0];u.onend=u.onerror=()=>{if(utterance===u)utterance=null;};window.speechSynthesis.speak(u);}catch{}}
+  function render(){if(!engine)return;const t=engine.tick_at(now());for(const [key,value]of Object.entries({current:t.current,cpr:t.cpr,cycle:t.cycle,epi:t.epi}))$(key).textContent=value;$('cycle').style.color=t.cycleColor;$('epi').style.color=t.epiColor;$('cpr').style.color=engine.cpr_start===null?'var(--gray)':'var(--green)';$('status').textContent=engine.status;$('status').style.backgroundColor=`var(--${engine.cpr_running?'red':engine.status==='ROSC!'?'green':engine.status==='待機中'?'accent':'darkgray'})`;$('shock-count').textContent=`除細動: ${engine.shock_count}回`;
+    for(const input of rhythmInputs)input.checked=input.value===engine.current_rhythm;
+    for(const [name,label]of medLabels){const event=engine.events.findLast(e=>e.label===name&&!engine.cancelled.has(e.seq));label.textContent=event?'最終 '+L.hms(event.at):'未投与';label.classList.toggle('unused',!event);}
+    const signature=engine.events.length+'|'+[...engine.cancelled].join(',')+'|'+engine.cpr_start;
+    if(signature!==lastRender){lastRender=signature;const list=$('timeline');list.replaceChildren();for(const e of engine.events){const row=el('div','','timeline-row',list);row.tabIndex=0;row.dataset.kind=e.kind;row.classList.toggle('cancelled',engine.cancelled.has(e.seq));el('span',L.format_line(e,engine.timeline_base()),'',row);const cancel=()=>{const at=now();engine.set_cancel(e.seq,!engine.cancelled.has(e.seq),at);render();};button(row,engine.cancelled.has(e.seq)?'取消を戻す':'この記録を取り消す',cancel);row.addEventListener('contextmenu',event=>{event.preventDefault();const d=dialog('cancel','記録の訂正',false);d.querySelector('.cancel-action')?.remove();const b=button(d,engine.cancelled.has(e.seq)?'取消を戻す':'この記録を取り消す',()=>{cancel();d.close();});b.className='cancel-action';open(d);});}list.scrollTop=list.scrollHeight;}
+    for(const kind of t.notifications)speak(kind);
+  }
+  function buildUI(){const app=$('app');const patient=el('header','','patient',app);for(const [id,title]of [['pid','患者ID'],['pname','氏名']]){const label=el('label',title,'',patient),input=privateInput(el('input','','',label));input.id=id;input.addEventListener('input',()=>{clearTimeout(patientJob);patientJob=setTimeout(savePatient,500);});input.addEventListener('blur',()=>savePatient(now()));}
+    const clocks=el('section','','clocks',app);for(const [key,title]of [['current','現在時刻'],['cpr','CPR経過'],['cycle','サイクル残り'],['epi','アドレナリン経過'],['status','状態']]){const box=el('div','','clock-box',clocks);const heading=el('div',title,'clock-heading',box);if(key==='epi')heading.id='epi-heading';const value=el('div',key==='status'?'待機中':'--:--',key==='status'?'status':'timer',box);value.id=key;}
+    const body=el('main','','body',app),left=el('section','','panel left',body),middle=el('section','','panel middle',body),right=el('section','','panel right',body);
+    el('h2','CPR管理','',left);button(left,'CPR 開始',at=>{if(!engine.start_cpr(at))toast('CPRはすでに実施中です。');else void acquireWake();render();},'red');button(left,'CPR 終了',at=>{engine.end_cpr(at);releaseWake();render();},'darkgray');button(left,'CPA 確認',at=>record('arrival','CPA確認','',at));button(left,'心拍 再開 (ROSC)',at=>{engine.rosc(at);releaseWake();render();},'btn-rosc');el('h2','リズム確認','',left);const rhythm=el('div','','rhythms',left);for(const name of RHYTHMS){const label=el('label','','',rhythm),input=el('input','','',label);input.type='radio';input.name='rhythm';input.value=name;label.append(document.createTextNode(name));rhythmInputs.push(input);input.addEventListener('change',()=>{const at=now();engine.set_rhythm(name,at);render();});}
+    button(left,'⚡ 除細動 (Shock)',at=>{engine.shock(at);render();},'orange');el('div','除細動: 0回','count',left).id='shock-count';el('h2',"H's & T's（左:H系　右:T系）",'',left);const ht=el('div','','ht',left);H_CAUSES.forEach((h,i)=>{for(const name of [h,T_CAUSES[i]]){const label=el('label','','',ht),input=el('input','','',label);input.type='checkbox';htInputs.push(input);label.append(document.createTextNode(name));input.addEventListener('change',()=>{const at=now();record('ht',name+(input.checked?' 疑い':' 除外'),'',at);});}});
+    el('h2','薬剤投与','',middle);const meds=el('div','','meds',middle);for(const [name,dose,color]of MEDS){const cell=el('div','','med',meds);button(cell,name,async at=>{const sec=engine.epi_interval(at);if(name==='アドレナリン'&&sec!==null&&sec<150&&!await ask('投与間隔の確認',`前回の投与から ${sec}秒（${(sec/60).toFixed(1)}分）です。本当に投与しますか？`))return;engine.medication(name,dose,at);render();},color);el('div',dose,'dose',cell);medLabels.set(name,el('div','未投与','last-dose unused',cell));}el('h2','処置・手技','',middle);const procedures=el('div','','procedures',middle);for(const [name,color]of PROCEDURES)button(procedures,name,at=>record('proc',name,'',at),color);
+    el('h2','タイムライン','',right);el('div','','timeline',right).id='timeline';const bottom=el('footer','','bottom',app);button(bottom,'記録を書き出す',openExport);button(bottom,'新しい症例',async at=>{if(await ask('新しい症例','現在の記録を確定して新しい症例を始めます。よろしいですか？')){savePatient(at);beginSession(at);}});button(bottom,'メモ窓',()=>{$('memo').hidden=false;clampMemo();});button(bottom,'',()=>{settings.sound_enabled=!settings.sound_enabled;if(!settings.sound_enabled)window.speechSynthesis?.cancel();saveSettings();}).id='sound';button(bottom,'⚙ 設定',openSettings);button(bottom,'症例の管理',openCases);el('span','v1.0-html','',bottom);el('span','','',bottom).id='storage';el('span','','',bottom).id='saved';el('span','※ 表示は目安です。臨床判断は医師が行ってください','disclaimer',bottom);
+    buildMemo();updateSettingsLabels();app.hidden=false;
+  }
+  function beginSession(at=now()){releaseWake();clearTimeout(patientJob);sid=L.session_id(at,repo.sessions().map(s=>s.sid));engine.reset_state();append({t:'session',session_id:sid,started_at:L.iso(at),app_version:'1.0-html'});$('pid').value='';$('pname').value='';htInputs.forEach(i=>i.checked=false);lastRender='';render();}
+  function rebuildNotes(){const host=$('quick-notes');host.replaceChildren();for(const note of settings.quick_notes)button(host,note,at=>record('memo','メモ: '+note,'',at));}
+  function clampMemo(){const memo=$('memo');if(memo.hidden)return;const r=memo.getBoundingClientRect();memo.style.left=Math.max(0,Math.min(r.left,innerWidth-r.width))+'px';memo.style.top=Math.max(0,Math.min(r.top,innerHeight-r.height))+'px';memo.style.right='auto';memo.style.bottom='auto';}
+  function scheduleMemo(){clearTimeout(memoJob);memoJob=setTimeout(()=>{if($('memo').hidden)return;const r=$('memo').getBoundingClientRect();settings.memo_window={x:Math.round(r.left),y:Math.round(r.top),w:Math.round(r.width),h:Math.round(r.height)};saveSettings();},500);}
+  function buildMemo(){const memo=el('aside','','memo',document.body);memo.id='memo';if(window.matchMedia&&window.matchMedia('(max-width:1050px)').matches)memo.hidden=true;const title=el('div','','memo-head',memo);el('strong','メモ','',title);button(title,'×',()=>{memo.hidden=true;});el('div','','quick-notes',memo).id='quick-notes';const input=privateInput(el('textarea','','memo-input',memo));input.rows=3;input.setAttribute('aria-label','自由入力メモ');input.addEventListener('keydown',event=>{const at=now();if(event.isComposing||event.keyCode===229)return;if(event.key!=='Enter'||event.shiftKey)return;event.preventDefault();const text=input.value.trim();if(text){record('memo','メモ: '+text.replaceAll('\n',' / '),'',at);input.value='';}});button(memo,'定型文を編集',openNotes);rebuildNotes();const mw=settings.memo_window;for(const [key,prop]of [['w','width'],['h','height']])if(Number.isFinite(mw[key])&&mw[key]>0)memo.style[prop]=mw[key]+'px';if(Number.isFinite(mw.x))memo.style.left=mw.x+'px';if(Number.isFinite(mw.y))memo.style.top=mw.y+'px';
+    let drag=null;title.addEventListener('pointerdown',event=>{if(event.target.closest('button'))return;const r=memo.getBoundingClientRect();drag={x:event.clientX-r.left,y:event.clientY-r.top};title.setPointerCapture(event.pointerId);event.preventDefault();});title.addEventListener('pointermove',event=>{if(!drag)return;memo.style.left=event.clientX-drag.x+'px';memo.style.top=event.clientY-drag.y+'px';memo.style.right='auto';memo.style.bottom='auto';clampMemo();scheduleMemo();});title.addEventListener('pointerup',()=>{drag=null;scheduleMemo();});title.addEventListener('pointercancel',()=>drag=null);if(window.ResizeObserver)new ResizeObserver(()=>{clampMemo();scheduleMemo();}).observe(memo);window.addEventListener('resize',()=>{clampMemo();scheduleMemo();});requestAnimationFrame(clampMemo);
+  }
+  function openNotes(){const d=dialog('notes','定型文を編集');if(d.open){d.focus();return;}d.querySelector('.notes-body')?.remove();const body=el('div','','notes-body',d),inputs=[];for(let i=0;i<15;i++){const label=el('label',String(i+1),'',body),input=privateInput(el('input','','',label));input.value=settings.quick_notes[i]||'';inputs.push(input);}button(body,'保存',()=>{settings.quick_notes=inputs.map(i=>i.value.trim()).filter(Boolean);saveSettings();rebuildNotes();d.close();});open(d);}
+  function fillVoices(select){select.replaceChildren();const automatic=el('option','自動選択','',select);automatic.value='';const japanese=voices.filter(v=>v.lang.toLowerCase().startsWith('ja')||v.voiceURI===settings.speech_voice).sort((a,b)=>Number(b.localService)-Number(a.localService));for(const voice of japanese){const option=el('option',`${voice.name} (${voice.lang}${voice.localService?'・端末内蔵':''})`,'',select);option.value=voice.voiceURI;}select.value=settings.speech_voice;}
+  function openSettings(){const d=dialog('settings','設定');if(d.open){d.focus();return;}d.querySelector('.settings-body')?.remove();const body=el('div','','settings-body',d);
+    function field(title,key,type){const label=el('label',title,'',body),input=el(type==='select'?'select':'input','','',label);if(type!=='select')input.type=type;input.value=settings[key];input.addEventListener(type==='range'||type==='text'?'input':'change',()=>{settings[key]=['epi_target_min','speech_rate','retention_days'].includes(key)?Number(input.value):input.value;saveSettings();if(key==='speech_rate')rateValue.textContent=String(settings.speech_rate);});return input;}
+    const target=field('アドレナリン目標','epi_target_min','select');for(const n of [3,4,5]){const o=el('option',n+'分','',target);o.value=n;}target.value=settings.epi_target_min;field('アドレナリン通知の文言','epi_announce_text','text');field('2分サイクル通知の文言','cycle_announce_text','text');const rate=field('音声の速さ','speech_rate','range');rate.min='0.5';rate.max='2';rate.step='0.05';rate.value=settings.speech_rate;const rateValue=el('output',String(settings.speech_rate),'',body);const voice=field('音声の声','speech_voice','select');voice.id='voice-select';fillVoices(voice);button(body,'試し聞き',()=>speak('cycle'));const retention=field('保存期間（日数・0＝自動削除しない）','retention_days','number');retention.min='0';retention.max='90';retention.step='1';el('p','F11で全画面にすると画面を広く使えます','',body);open(d);
+  }
+  async function download(text,name,type,picker=false){try{const blob=new Blob([text],{type});if(picker&&window.showSaveFilePicker){const handle=await window.showSaveFilePicker({suggestedName:name,types:[{description:'CSV',accept:{'text/csv':['.csv']}}]});const writable=await handle.createWritable();await writable.write(blob);await writable.close();}else{const url=URL.createObjectURL(blob),a=el('a','','',document.body);a.href=url;a.download=name;a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}}catch(e){if(e.name!=='AbortError')toast('保存できませんでした。');}}
+  function openExport(){const d=dialog('export','記録の書き出し',false);if(d.open){d.focus();return;}d.querySelector('.export-body')?.remove();const body=el('div','','export-body',d),bar=el('div','','export-options',body);let format='progress';const preview=privateInput(el('textarea','','preview',body));preview.setAttribute('aria-label','書き出しプレビュー');const excludeLabel=el('label','','',bar),exclude=el('input','','',excludeLabel);exclude.type='checkbox';exclude.checked=true;excludeLabel.append(document.createTextNode('取り消した記録を除く'));const regenerate=()=>{savePatient();preview.value=format==='summary'?L.export_summary(engine.state_data(),exclude.checked,'1.0-html'):L.export_progress(engine.state_data(),exclude.checked);};for(const [value,title]of [['progress','経過記録（1行形式）'],['summary','サマリ（見出し＋本文）']]){const label=el('label','','',bar),radio=el('input','','',label);radio.type='radio';radio.name='export-format';radio.checked=value===format;label.append(document.createTextNode(title));radio.addEventListener('change',()=>{format=value;regenerate();});}exclude.addEventListener('change',regenerate);
+    const copy=button(body,'クリップボードにコピー',async()=>{let ok=false;try{await navigator.clipboard.writeText(preview.value);ok=true;}catch{preview.focus();preview.select();try{ok=document.execCommand('copy');}catch{}}if(ok){copy.textContent='コピーしました';setTimeout(()=>copy.textContent='クリップボードにコピー',1500);}else toast('コピーできませんでした。プレビューを選択して Ctrl+C を押してください');});button(body,'CSVで保存',at=>{savePatient(at);const pid=engine.patient_id;return download(L.write_csv(engine.state_data()),`救急記録_${pid?pid+'_':''}${L.stamp(at)}.csv`,'text/csv;charset=utf-8',true);});regenerate();open(d);
+  }
+  function openCases(){const d=dialog('cases','症例の管理');if(d.open){d.focus();return;}populateCases(d);open(d);}
+  function populateCases(d){d.querySelector('.cases-body')?.remove();const body=el('div','','cases-body',d);for(const s of repo.sessions()){const state=L.foldRows(s.rows),row=el('div','','case-row',body);el('span',`${state.session?.started_at||s.sid}・記録${state.events.length}件${s.sid===sid?'（現在）':''}`,'',row);button(row,'JSONLで保存',()=>download(repo.jsonl(s.sid),s.sid+'.jsonl','application/x-ndjson;charset=utf-8'));button(row,'削除',async()=>{if(await ask('症例の削除','この症例を削除しますか？（元に戻せません）')){const current=s.sid===sid;const deletion=repo.deleteSession(s.sid);if(current)beginSession();await deletion;populateCases(d);}});}button(body,'すべて削除',async()=>{if(await ask('すべて削除','保存済みの症例をすべて削除しますか？（元に戻せません）')){clearTimeout(patientJob);const deletions=repo.sessions().map(s=>repo.deleteSession(s.sid));beginSession();await Promise.all(deletions);populateCases(d);}});}
+  function startHeartbeat(){try{const url=URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),1000);'],{type:'text/javascript'}));try{worker=new Worker(url);}finally{URL.revokeObjectURL(url);}worker.onmessage=render;worker.onerror=()=>{worker.terminate();setInterval(render,250);};}catch{setInterval(render,250);}}
+  async function initialize(){repo=new ClockStore.Repository(new ClockStore.IndexedBackend(),()=>{$('save-error').hidden=false;updateSaveLabel();});settings=await repo.init();engine=new L.Engine({append,settings});buildUI();$('app').inert=true;$('memo').inert=true;try{void navigator.storage?.persist().catch(()=>{});}catch{}
+    const cand=L.candidate(repo.sessions(),now());await repo.prune(settings.retention_days,now(),cand?[cand.sid]:[]);if(cand&&await ask('記録の復元',`前回の記録が残っています（${L.hms(cand.state.session.started_at).slice(0,5)}開始・記録${cand.state.events.length}件）。続きから開きますか？`)){sid=cand.sid;engine.restore(cand.state);$('pid').value=engine.patient_id;$('pname').value=engine.patient_name;render();}else beginSession();
+    $('app').inert=false;$('memo').inert=false;refreshVoices();window.speechSynthesis?.addEventListener('voiceschanged',refreshVoices);$('activation').hidden=!!navigator.userActivation?.hasBeenActive;const activate=()=>{$('activation').hidden=true;initAudio();};document.addEventListener('pointerdown',activate,{once:true});document.addEventListener('keydown',activate,{once:true});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){hiddenAt=Date.now();savePatient();}else{render();if(hiddenAt!==null&&Date.now()-hiddenAt>10000)toast('この画面が裏に回っていました。音声が遅れた可能性があります');hiddenAt=null;void acquireWake();}});window.addEventListener('beforeunload',event=>{savePatient();if(engine.cpr_running){event.preventDefault();event.returnValue='';}});startHeartbeat();render();
+  }
+  let started=false;async function startOnce(){if(started)return;started=true;await initialize();}
+  async function boot(){if(!navigator.locks){await startOnce();return;}try{await navigator.locks.request('kyukyu-tokei-main',{ifAvailable:true},async lock=>{if(!lock){document.body.replaceChildren(el('p','救急時計はすでに別のタブで開いています。開いている画面をお使いください。'));return;}await startOnce();await new Promise(()=>{});});}catch{await startOnce();}}
+  void boot();
+})();
+</script></body></html>
