@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="build-rev" content="fd6cf03">
+<title>ICLS救急時計 配布ページ（電子カルテ端末用）</title>
+<style>
+:root { --navy:#1b2a52; --blue:#0f3460; --orange:#ff8c00; --line:#c9cfdb; --ink:#1c2230; --muted:#5b6478; --bg:#f4f6fb; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 "Yu Gothic UI","Yu Gothic","Meiryo",system-ui,sans-serif; }
+header { background:var(--navy); color:#fff; padding:22px 16px; }
+header h1 { margin:0; font-size:26px; line-height:1.3; }
+header p { margin:6px 0 0; color:#cfd6ea; font-size:15px; }
+main { max-width:760px; margin:0 auto; padding:16px; }
+section { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:16px 0; }
+h2 { margin:0 0 10px; font-size:19px; padding-left:10px; border-left:6px solid var(--orange); }
+.note { background:#fff4e0; border:1px solid var(--orange); border-radius:10px; padding:12px 16px; margin:16px 0; }
+.dl { display:block; text-decoration:none; background:var(--blue); color:#fff; border-radius:10px; padding:16px 18px; margin:10px 0; }
+.dl strong { display:block; font-size:19px; }
+.dl span { display:block; font-size:14px; color:#d6def0; margin-top:2px; }
+.dl.sub { background:#fff; color:var(--blue); border:2px solid var(--blue); }
+.dl.sub span { color:var(--muted); }
+code { font-family:Consolas,monospace; background:#eef1f7; padding:1px 5px; border-radius:4px; word-break:break-all; }
+table { border-collapse:collapse; width:100%; font-size:14px; }
+td, th { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+th { background:#e6ebf5; }
+ol, ul { padding-left:1.4em; margin:6px 0; }
+.muted { color:var(--muted); font-size:14px; }
+</style></head>
+<body>
+<header>
+  <h1>ICLS救急時計 配布ページ</h1>
+  <p>電子カルテ端末用（本番用） ／ 版 v1.0-html（2026-10-06）</p>
+</header>
+<main>
+
+<div class="note"><strong>これは本番用です。</strong> 練習用ではありません。<br>
+練習したいときは、練習用ページを使ってください： <a href="../">練習用ページ</a>（実際の患者さんの情報は入れないでください）</div>
+
+<section>
+  <h2>ダウンロード</h2>
+  <a class="dl" href="kyukyu-tokei_html_v1.0-html_20261006.zip" download="救急時計_HTML版_v1.0-html_20261006.zip">
+    <strong>配布セット（ZIP）をダウンロード</strong>
+    <span>本体・マニュアル2冊（PDF）・ショートカットを作る道具 つき（1.1MB）</span>
+  </a>
+  <a class="dl sub" href="kyukyu-tokei_html_noscript_v1.0-html_20261006.zip" download="救急時計_HTML版_メール用_v1.0-html_20261006.zip">
+    <strong>配布セット（スクリプトなし版）</strong>
+    <span>.bat などのプログラムを含まない版。端末が .bat を止めるときに使います（1.1MB）</span>
+  </a>
+  <a class="dl sub" href="kyukyu-tokei_v1.0-html.html" download="救急時計.html">
+    <strong>救急時計.html（本体だけ）</strong>
+    <span>すでに配布セットを入れている端末で、本体だけ差し替えるとき（53KB）</span>
+  </a>
+  <p class="muted">ダウンロードできないときは、ブラウザの「ダウンロードをブロック」の表示を確認してください。</p>
+</section>
+
+<section>
+  <h2>ダウンロードしたあと</h2>
+  <ol>
+    <li><strong>ZIPを展開する前に</strong>、ZIPを右クリック →「プロパティ」→ 下のほうの「許可する」にチェック →「OK」</li>
+    <li>ZIPを展開して、できたフォルダを <code>C:\ICLS\</code> などにコピーする</li>
+    <li>フォルダ内の「はじめにお読みください.txt」の手順で、デスクトップにアイコンを作る</li>
+    <li>使いかたは、フォルダ内の「簡易マニュアル_ブラウザ版.pdf」を見る（設定を変えるときは「設定ガイド_ブラウザ版.pdf」）</li>
+  </ol>
+  <p class="muted">使うブラウザは Microsoft Edge です。記録は、その端末のEdgeの中にだけ保存されます（外部には送られません）。</p>
+</section>
+
+<section>
+  <h2>正しいファイルか確かめる（SHA256）</h2>
+  <p>PowerShell で、ダウンロードしたファイルに次を実行し、下の値と一致するか確かめます。</p>
+  <p><code>Get-FileHash ファイル名 -Algorithm SHA256</code></p>
+  <table>
+    <tr><th>ファイル</th><th>SHA256</th></tr>
+    <tr><td>救急時計_HTML版_v1.0-html_20261006.zip</td><td><code>2D5AE63F1E956B5B584515FE9ED707DB8EDE1BB4605D71109B6D5783B0F0314F</code></td></tr>
+    <tr><td>救急時計_HTML版_メール用_v1.0-html_20261006.zip</td><td><code>859F7F598111BF5EEAB1C069361E9A8A918C35930DCDE877D2FA26C57C2E672F</code></td></tr>
+    <tr><td>救急時計.html</td><td><code>7D002525D7CD0AADBED005FC93FB258AFEC80A2C205EABA41AAE45C06DBE3A50</code></td></tr>
+  </table>
+  <p class="muted">一致しないファイルは、使わずに削除して、システム責任者に知らせてください。</p>
+</section>
+
+<section>
+  <h2>ご注意</h2>
+  <ul>
+    <li>表示される用量とタイミングは目安です。臨床判断は、必ず医師が行います。</li>
+    <li>記録の正本は診療録です。このツールの出力は、補助資料として扱います。</li>
+    <li>本ツールは、薬機法上の医療機器ではありません。</li>
+    <li>困ったこと、分からないことは、上司やシステム責任者に確認してください。</li>
+  </ul>
+</section>
+
+<p class="muted" style="text-align:center">ICLS救急時計 ブラウザ版 v1.0-html ／ 配布ページの版 fd6cf03</p>
+</main>
+</body></html>
