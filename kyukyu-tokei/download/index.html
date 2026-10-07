@@ -4,7 +4,7 @@
 <meta name="robots" content="noindex,nofollow">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
-<meta name="build-rev" content="515b59f">
+<meta name="build-rev" content="c4d5e5e">
 <title>ICLS救急時計 配布ページ（電子カルテ端末用）</title>
 <style>
 :root { --navy:#1b2a52; --blue:#0f3460; --orange:#ff8c00; --line:#c9cfdb; --ink:#1c2230; --muted:#5b6478; --bg:#f4f6fb; }
@@ -32,7 +32,7 @@ ol, ul { padding-left:1.4em; margin:6px 0; }
 <body>
 <header>
   <h1>ICLS救急時計 配布ページ</h1>
-  <p>電子カルテ端末用（本番用） ／ 版 v1.1-html（2026-10-06）</p>
+  <p>電子カルテ端末用（本番用） ／ 版 v1.1-html（2026-10-08）</p>
 </header>
 <main>
 
@@ -41,13 +41,13 @@ ol, ul { padding-left:1.4em; margin:6px 0; }
 
 <section>
   <h2>ダウンロード</h2>
-  <a class="dl" href="kyukyu-tokei_html_v1.1-html_20261006.zip" download="救急時計_HTML版_v1.1-html_20261006.zip">
+  <a class="dl" href="kyukyu-tokei_html_v1.1-html_20261008.zip" download="救急時計_HTML版_v1.1-html_20261008.zip">
     <strong>配布セット（ZIP）をダウンロード</strong>
-    <span>本体・マニュアル3冊（PDF。スマホ版を含む）・ショートカットを作る道具 つき（2.2MB）</span>
+    <span>本体・マニュアル3冊（スマホ版を含む）・導入ガイド・実機確認チェックシート（すべてPDF）・ショートカットを作る道具 つき（2.6MB）</span>
   </a>
-  <a class="dl sub" href="kyukyu-tokei_html_noscript_v1.1-html_20261006.zip" download="救急時計_HTML版_メール用_v1.1-html_20261006.zip">
+  <a class="dl sub" href="kyukyu-tokei_html_noscript_v1.1-html_20261008.zip" download="救急時計_HTML版_メール用_v1.1-html_20261008.zip">
     <strong>配布セット（スクリプトなし版）</strong>
-    <span>.bat などのプログラムを含まない版。端末が .bat を止めるときに使います（2.2MB）</span>
+    <span>.bat などのプログラムを含まない版。端末が .bat を止めるときに使います（2.6MB）</span>
   </a>
   <a class="dl sub" href="kyukyu-tokei_v1.1-html.html" download="救急時計.html">
     <strong>救急時計.html（本体だけ）</strong>
@@ -62,6 +62,7 @@ ol, ul { padding-left:1.4em; margin:6px 0; }
     <li><strong>ZIPを展開する前に</strong>、ZIPを右クリック →「プロパティ」→ 下のほうの「許可する」にチェック →「OK」</li>
     <li>ZIPを展開して、できたフォルダを <code>C:\ICLS\</code> などにコピーする</li>
     <li>フォルダ内の「はじめにお読みください.txt」の手順で、デスクトップにアイコンを作る</li>
+    <li>手順の詳しい説明は「導入ガイド_ブラウザ版.pdf」。<strong>電子カルテ端末に初めて入れたときは、「実機確認チェックシート_ブラウザ版.pdf」で、記録が残ることを確かめる</strong></li>
     <li>使いかたは、フォルダ内の「簡易マニュアル_ブラウザ版.pdf」を見る（設定を変えるときは「設定ガイド_ブラウザ版.pdf」、スマホで使うときは「簡易マニュアル_スマホ版.pdf」）</li>
   </ol>
   <p class="muted">使うブラウザは Microsoft Edge です。記録は、その端末のEdgeの中にだけ保存されます（外部には送られません）。</p>
@@ -73,8 +74,8 @@ ol, ul { padding-left:1.4em; margin:6px 0; }
   <p><code>Get-FileHash ファイル名 -Algorithm SHA256</code></p>
   <table>
     <tr><th>ファイル</th><th>SHA256</th></tr>
-    <tr><td>救急時計_HTML版_v1.1-html_20261006.zip</td><td><code>015419F9938D6977D255E5B71D5A7621D656581559DF951D0A316EC1C17180F6</code></td></tr>
-    <tr><td>救急時計_HTML版_メール用_v1.1-html_20261006.zip</td><td><code>F4385C962E0E942060A8AE50D5F170D37953B728F4497424D874E969E5E1B6C7</code></td></tr>
+    <tr><td>救急時計_HTML版_v1.1-html_20261008.zip</td><td><code>F08EB75300C8F5F6C7A2C1070E97275C7307330FED31BF71264E73F966A5BA04</code></td></tr>
+    <tr><td>救急時計_HTML版_メール用_v1.1-html_20261008.zip</td><td><code>6EB3D76AB88673EE12908129F8B114B2CC4C4548D93F9F7FE0F59CE41D51C6F9</code></td></tr>
     <tr><td>救急時計.html</td><td><code>6514D3EF8BC684DE15751A2ECEF3CFF3ACD48E272D224400F6A4FAA790403C95</code></td></tr>
   </table>
   <p class="muted">一致しないファイルは、使わずに削除して、システム責任者に知らせてください。</p>
@@ -90,6 +91,6 @@ ol, ul { padding-left:1.4em; margin:6px 0; }
   </ul>
 </section>
 
-<p class="muted" style="text-align:center">ICLS救急時計 ブラウザ版 v1.1-html ／ 配布ページの版 515b59f</p>
+<p class="muted" style="text-align:center">ICLS救急時計 ブラウザ版 v1.1-html ／ 配布ページの版 c4d5e5e</p>
 </main>
 </body></html>
