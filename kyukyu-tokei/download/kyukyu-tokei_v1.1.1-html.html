@@ -2,7 +2,7 @@
 <html lang="ja"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>救急時計（練習用）</title><meta name="robots" content="noindex,nofollow"><meta name="build-rev" content="6b078ca"><style>:root {
+<title>救急時計 v1.1.1-html</title><style>:root {
   --bg:#1B1B2F; --panel:#24243A; --accent:#0F3460; --red:#FF3B30; --green:#00FF7F; --yellow:#FFC107; --orange:#FF8C00; --white:#F0F0F0; --gray:#AAAAAA; --darkgray:#333344; --text-muted:#9BA3C0; --error-bg:#B3261E; --settings-label-w:11.5rem; --settings-value-w:3em; --banner-top:6px; --banner-gap:4px; --banner-radius:6px; --banner-max-w:92vw;
   --btn-rosc:#1A6B4A; --btn-mag:#1A5C3A; --bicarb:#1A6BBF; --calcium:#7B2D8B; --saline:#2A9D8F; --crystalloid:#1D7A8C; --iv:#4361EE; --intubation:#7209B7; --pacing:#3A0CA3; --airway:#560BAD; --ultrasound:#06D6A0; --ecg:#1A7ABF; --gas:#8338EC; --proc:#4CC9F0; --ht:#B5838D; --log-bg:#0D0D1A; --input-bg:#FFFFFF; --input-fg:#111111; --backdrop:#00000088;
   --font-ui:"Yu Gothic UI","Meiryo","Hiragino Sans",system-ui,sans-serif; --font-mono:"Consolas","Menlo","Courier New",monospace;
@@ -290,7 +290,7 @@ dialog.dialog-export { width:var(--export-w); top:var(--export-top); }   /* :has
   }, 5000);
 })();
 </script></head>
-<body><div id="banners" role="status"><div id="practice">練習用です。実際の患者さんの情報は入力しないでください（版 6b078ca）</div><div id="save-error" class="error" hidden>記録を保存できません。この画面を閉じると記録が失われます</div><div id="activation" hidden>音声を有効にするには、画面のどこかを一度タップしてください</div><div id="voice-warning" hidden>日本語の音声が見つかりません。ビープ音で代用します</div></div>
+<body><div id="banners" role="status"><div id="practice" hidden>練習用です。実際の患者さんの情報は入力しないでください（版 ）</div><div id="save-error" class="error" hidden>記録を保存できません。この画面を閉じると記録が失われます</div><div id="activation" hidden>音声を有効にするには、画面のどこかを一度タップしてください</div><div id="voice-warning" hidden>日本語の音声が見つかりません。ビープ音で代用します</div></div>
 <div id="app" hidden></div><div id="toast" role="status" hidden></div>
 <noscript>救急時計を使用するにはJavaScriptを有効にしてください。</noscript>
 <script>"use strict";
