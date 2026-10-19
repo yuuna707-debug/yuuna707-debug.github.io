@@ -2,7 +2,7 @@
 <html lang="ja"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>救急時計（練習用）</title><meta name="robots" content="noindex,nofollow"><meta name="build-rev" content="6b078ca"><style>:root {
+<title>救急時計（練習用）</title><meta name="robots" content="noindex,nofollow"><meta name="build-rev" content="049266d"><style>:root {
   --bg:#1B1B2F; --panel:#24243A; --accent:#0F3460; --red:#FF3B30; --green:#00FF7F; --yellow:#FFC107; --orange:#FF8C00; --white:#F0F0F0; --gray:#AAAAAA; --darkgray:#333344; --text-muted:#9BA3C0; --error-bg:#B3261E; --settings-label-w:11.5rem; --settings-value-w:3em; --banner-top:6px; --banner-gap:4px; --banner-radius:6px; --banner-max-w:92vw;
   --btn-rosc:#1A6B4A; --btn-mag:#1A5C3A; --bicarb:#1A6BBF; --calcium:#7B2D8B; --saline:#2A9D8F; --crystalloid:#1D7A8C; --iv:#4361EE; --intubation:#7209B7; --pacing:#3A0CA3; --airway:#560BAD; --ultrasound:#06D6A0; --ecg:#1A7ABF; --gas:#8338EC; --proc:#4CC9F0; --ht:#B5838D; --log-bg:#0D0D1A; --input-bg:#FFFFFF; --input-fg:#111111; --backdrop:#00000088;
   --font-ui:"Yu Gothic UI","Meiryo","Hiragino Sans",system-ui,sans-serif; --font-mono:"Consolas","Menlo","Courier New",monospace;
@@ -151,6 +151,18 @@ dialog.dialog-export { width:var(--export-w); top:var(--export-top); }   /* :has
 .no-flex-gap .memo-head>*+*,.no-flex-gap .dialog-head>*+*,.no-flex-gap .case-row>*+* { margin-left:var(--gap); }
 .no-flex-gap .notes-body>*+*,.no-flex-gap .settings-body>*+*,.no-flex-gap .cases-body>*+* { margin-top:var(--gap); }
 .no-flex-gap #banners>*+* { margin-top:var(--banner-gap); }
+/* タイムライン拡大（振り返り）：画面いっぱいに大きく出す・直せる・コピーできる */
+.review-overlay { position:fixed; left:0; top:0; right:0; bottom:0; z-index:90; background:var(--bg); display:flex; flex-direction:column; padding:12px; }
+.review-overlay[hidden] { display:none; }
+.review-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; font-size:22px; padding:6px 4px 8px; }
+.review-tools { display:flex; align-items:center; flex-wrap:wrap; }
+.review-tools>* { margin-left:8px; }
+.review-tools button { font-size:18px; padding:10px 18px; }
+.review-tools label { font-size:16px; }
+.review-note { color:var(--text-muted); font-size:14px; padding:0 4px 8px; }
+.review-text { flex:1; width:100%; resize:none; background:#0b0b16; color:var(--white); border:1px solid var(--gray); padding:16px 20px; font-family:var(--font-mono); font-size:26px; line-height:1.7; white-space:pre-wrap; overflow:auto; }
+@media (min-width:1600px) { .review-text { font-size:34px; } }
+@media (max-width:700px) { .review-overlay { padding:6px; } .review-head { font-size:17px; } .review-tools button { font-size:14px; padding:8px 10px; } .review-tools>* { margin-left:4px; } .review-tools label { font-size:13px; } .review-text { font-size:15px; line-height:1.55; padding:10px; } }
 </style><script>/* 古いブラウザへの備えと、「開けない」ときの診断表示。
    本体のスクリプトとは別のスクリプト要素で、先に読み込む（本体が構文エラーで止まっても、これは動く）。
    わざと古い書きかた（ES5）で書く: ?. ?? ??= などは使わない。 */
@@ -290,7 +302,7 @@ dialog.dialog-export { width:var(--export-w); top:var(--export-top); }   /* :has
   }, 5000);
 })();
 </script></head>
-<body><div id="banners" role="status"><div id="practice">練習用です。実際の患者さんの情報は入力しないでください（版 6b078ca）</div><div id="save-error" class="error" hidden>記録を保存できません。この画面を閉じると記録が失われます</div><div id="activation" hidden>音声を有効にするには、画面のどこかを一度タップしてください</div><div id="voice-warning" hidden>日本語の音声が見つかりません。ビープ音で代用します</div></div>
+<body><div id="banners" role="status"><div id="practice">練習用です。実際の患者さんの情報は入力しないでください（版 049266d）</div><div id="save-error" class="error" hidden>記録を保存できません。この画面を閉じると記録が失われます</div><div id="activation" hidden>音声を有効にするには、画面のどこかを一度タップしてください</div><div id="voice-warning" hidden>日本語の音声が見つかりません。ビープ音で代用します</div></div>
 <div id="app" hidden></div><div id="toast" role="status" hidden></div>
 <noscript>救急時計を使用するにはJavaScriptを有効にしてください。</noscript>
 <script>"use strict";
@@ -1104,10 +1116,93 @@ if (typeof module !== "undefined" && module.exports) module.exports = ClockStore
     }).id = "sound";
     button(bottom, "⚙ 設定", openSettings);
     button(bottom, "症例の管理", openCases);
-    el("span", "v1.1.1-html", "", bottom);
+    el("span", "v1.2-html", "", bottom);
     el("span", "", "", bottom).id = "storage";
     el("span", "", "", bottom).id = "saved";
     el("span", "※ 表示は目安です。臨床判断は医師が行ってください", "disclaimer", bottom);
+    {
+      const review = el("div", "", "review-overlay", document.body);
+      review.hidden = true;
+      review.id = "review";
+      const reviewHead = el("div", "", "review-head", review);
+      el("strong", "タイムライン（振り返り）", "", reviewHead);
+      const reviewTools = el("div", "", "review-tools", reviewHead);
+      el("div", "※ ここで直した文章は、コピー用だけに反映されます（記録そのものは変わりません）", "review-note", review);
+      const reviewText = privateInput(el("textarea", "", "review-text", review));
+      reviewText.setAttribute("aria-label", "タイムライン（直せます）");
+      reviewText.placeholder = "記録はまだありません";
+      let reviewEdited = false;
+      const excludeLabel = el("label", "", "", reviewTools), exclude = el("input", "", "", excludeLabel);
+      exclude.type = "checkbox";
+      exclude.checked = true;
+      excludeLabel.append(document.createTextNode("取り消した記録を除く"));
+      const fill = () => {
+        reviewText.value = engine.events.filter((e) => !exclude.checked || !engine.cancelled.has(e.seq)).map((e) => L.format_line(e, engine.timeline_base()) + (engine.cancelled.has(e.seq) ? "  【取消】" : "")).join("\n");
+        reviewEdited = false;
+        reviewText.scrollTop = 0;
+      };
+      exclude.addEventListener("change", fill);
+      reviewText.addEventListener("input", () => {
+        reviewEdited = true;
+      });
+      const toMarkdown = (value) => {
+        const cell = (x) => x.replace(/\|/g, "\\|");
+        const rows = value.split("\n").filter((l) => l.trim() !== "").map((l) => {
+          const m = /^(\d{2}:\d{2}:\d{2})(?:\s+\(\+(\d{2}:\d{2})\))?\s+(.*)$/.exec(l.trim());
+          return m ? [m[1], m[2] || "", m[3]] : ["", "", l.trim()];
+        });
+        return ["# タイムライン", "", "| 時刻 | 経過 | 内容 |", "|---|---|---|"].concat(rows.map((r) => "| " + r.map(cell).join(" | ") + " |")).join("\n");
+      };
+      const copy = async (value, label) => {
+        let ok = false;
+        try {
+          await navigator.clipboard.writeText(value);
+          ok = true;
+        } catch (e) {
+          const t = el("textarea", "", "", document.body);
+          t.value = value;
+          t.style.position = "fixed";
+          t.style.left = "-9999px";
+          t.select();
+          try {
+            ok = document.execCommand("copy");
+          } catch (e2) {
+          }
+          t.remove();
+        }
+        toast(ok ? label + "をコピーしました" : "コピーできませんでした。文章を選んで Ctrl+C を押してください");
+      };
+      button(reviewTools, "コピー（テキスト）", () => copy(reviewText.value, "テキスト"), "accent");
+      button(reviewTools, "コピー（Markdown）", () => copy(toMarkdown(reviewText.value), "Markdown"), "accent");
+      button(reviewTools, "元に戻す", fill, "darkgray");
+      const toggleFull = () => {
+        try {
+          const d = document, r = d.documentElement, on = d.fullscreenElement || d.webkitFullscreenElement, res = on ? (d.exitFullscreen || d.webkitExitFullscreen).call(d) : (r.requestFullscreen || r.webkitRequestFullscreen).call(r);
+          if (res && res.catch) res.catch(() => toast("全画面にできませんでした。F11 キーを押してください"));
+        } catch (e) {
+          toast("全画面にできませんでした。F11 キーを押してください");
+        }
+      };
+      button(reviewTools, "全画面（F11）", toggleFull, "darkgray");
+      const closeReview = () => {
+        review.hidden = true;
+      };
+      button(reviewTools, "閉じる（Esc）", closeReview, "accent");
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || review.hidden) return;
+        if (reviewEdited) {
+          toast("修正中です。閉じるときは「閉じる」ボタンを押してください");
+          return;
+        }
+        closeReview();
+      });
+      const zoom = button(bottom, "🔍 タイムライン拡大", () => {
+        fill();
+        review.hidden = false;
+      }, "accent");
+      zoom.id = "review-open";
+      zoom.title = "タイムラインだけを画面いっぱいに大きく表示します。直したり、コピーしたりもできます（振り返り用）";
+    }
     buildMemo();
     updateSettingsLabels();
     app.hidden = false;
@@ -1118,7 +1213,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = ClockStore
     clearTimeout(patientJob);
     sid = L.session_id(at, repo.sessions().map((s) => s.sid));
     engine.reset_state();
-    append({ t: "session", session_id: sid, started_at: L.iso(at), app_version: "1.1.1-html" });
+    append({ t: "session", session_id: sid, started_at: L.iso(at), app_version: "1.2-html" });
     $("pid").value = "";
     $("pname").value = "";
     htInputs.forEach((i) => i.checked = false);
@@ -1327,7 +1422,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = ClockStore
     excludeLabel.append(document.createTextNode("取り消した記録を除く"));
     const regenerate = () => {
       savePatient();
-      preview.value = format === "summary" ? L.export_summary(engine.state_data(), exclude.checked, "1.1.1-html") : L.export_progress(engine.state_data(), exclude.checked);
+      preview.value = format === "summary" ? L.export_summary(engine.state_data(), exclude.checked, "1.2-html") : L.export_progress(engine.state_data(), exclude.checked);
     };
     for (const [value, title] of [["progress", "経過記録（1行形式）"], ["summary", "サマリ（見出し＋本文）"]]) {
       const label = el("label", "", "", bar), radio = el("input", "", "", label);
