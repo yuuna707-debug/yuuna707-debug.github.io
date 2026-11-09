@@ -131,7 +131,7 @@
       </select>
     </div>
     <div style="flex:1 1 90px">
-      <input type="text" id="byear" inputmode="numeric" placeholder="年">
+      <input type="text" id="byear" inputmode="numeric" placeholder="年（西暦でも可）">
     </div>
     <div style="flex:1 1 80px">
       <input type="text" id="bmonth" inputmode="numeric" placeholder="月">
@@ -418,7 +418,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-10-02 4319e96</b>
+  版: <b>2026-11-09 6369dc5</b>
 </p>
 
 </div>
@@ -1382,9 +1382,10 @@ function render() {
   $('nOnsetAbs').textContent = $('nOnset').value ? '→ ' + onsetText('nOnset') : '';
 
   const b = dob();
+  const autoNote = (eraBeforeAuto !== null && $('era').value === 'seireki') ? '（西暦に切り替えました）' : '';
   $('dobAbs').textContent = b
     ? '→ ' + (b.wareki ? b.wareki + '（' + b.year + '年）' : b.year + '年') +
-      b.m + '月' + b.d + '日　' + b.age + '歳'
+      b.m + '月' + b.d + '日　' + b.age + '歳' + autoNote
     : ($('byear').value || $('bmonth').value || $('bday').value ? '→ 生年月日を確認してください' : '');
 
   const text = overrideText !== null ? overrideText : buildText();
@@ -1465,13 +1466,38 @@ guardClear($('reset'), {
   $('secCommon').hidden = true;
   overrideText = null;
   touched = false;
+  eraBeforeAuto = null;
   render();
   $('out').textContent = '';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
+/* ★元号の既定は「昭和」。そこへ西暦をそのまま打つ人が多く、
+   昭和1960年＝不正な日付になって「QRが出ない」。和暦の年は最大でも2桁
+   （昭和64まで）なので、4桁なら西暦と断定して元号を自動で切り替える。
+   勝手に変えた事実は dobAbs に出す（黙って直すと次回も同じ入力をするため）。 */
+let eraBeforeAuto = null;        // 自動で切り替える前の元号。打ち直したら戻す
+function autoSeireki() {
+  const el = $('byear');
+  if (!el) return;
+  const v = el.value.trim();
+  const y = parseInt(v, 10);
+  const looksSeireki = /^\d{4}$/.test(v) && y >= 1880 && y <= new Date().getFullYear();
+
+  if (looksSeireki && $('era').value !== 'seireki') {
+    eraBeforeAuto = $('era').value;
+    $('era').value = 'seireki';
+  } else if (!looksSeireki && eraBeforeAuto !== null && $('era').value === 'seireki') {
+    /* 1960 と打ったあと「昭和35」に直す人がいる。勝手に西暦のままにすると
+       今度は西暦18年になってQRが消えるので、4桁でなくなったら元の元号へ戻す。 */
+    $('era').value = eraBeforeAuto;
+    eraBeforeAuto = null;
+  }
+}
+
 document.addEventListener('input', (e) => {
   if (!['scale', 'ec', 'sep'].includes(e.target.id)) { overrideText = null; touched = true; }
+  if (e.target.id === 'byear') autoSeireki();
   render();
 });
 document.addEventListener('change', () => { touched = true; render(); });
