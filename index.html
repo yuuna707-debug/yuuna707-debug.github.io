@@ -392,17 +392,23 @@
   <div class="meta" id="meta"></div>
   <div id="alerts"></div>
 
+  <!-- 読み取り用の全画面表示（scan-mode.js）。自動ロックで画面が消えて読み取れない事故と、
+       スキャナにかける前に消去されてしまう事故の対策。 -->
+  <button type="button" id="scanOpen" hidden>読み取り用に大きく表示</button>
+  <p class="hint">表示している間は画面が消えません。読み取りが終わるまでこのまま持っていてください。</p>
+
   <label>電子カルテに入る文字列</label>
   <pre id="out"></pre>
 
-  <div class="staff" style="margin-top:20px">
-    <span class="staff-tag">次の患者さんに渡す前に</span>
-    <p class="hint" style="margin:0 0 10px">
-      <b>職員用です。</b>受付での読み取りが終わってから押してください。
+  <!-- ★畳んである。二度確認にしても押される事故が続いたため「開く→1回目→2回目」の3手。 -->
+  <details class="staff" style="margin-top:20px">
+    <summary>職員用（次の患者さんに渡す前に）</summary>
+    <p class="hint" style="margin:8px 0 10px">
+      読み取りが終わってから押してください。
       前の方の入力が残ったまま渡すと<b>取り違えの原因になります</b>。
     </p>
-    <button type="button" id="reset" class="reset">入力をすべて消去（受付での読み取り後）</button>
-  </div>
+    <button type="button" id="reset" class="reset">入力をすべて消去（読み取り後）</button>
+  </details>
 </section>
 
 <!-- ========== 6. 検証用 ========== -->
@@ -418,7 +424,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-11-09 6369dc5</b>
+  版: <b>2026-11-09 86b8133</b>
 </p>
 
 </div>
@@ -1126,6 +1132,184 @@ if (typeof module !== 'undefined') module.exports = { guardClear };
 
 </script>
 <script>
+/* 読み取りモード — QRを画面いっぱいに出し、出している間は画面を消させない。
+ * 4ページ共通（build.py が <!--SCANMODE--> に差し込む）。
+ *
+ * ★なぜ必要か（どちらも現場で起きた）
+ *   1. QRを出したあと、スキャナにかける前に入力者が消去ボタンを押してしまう。
+ *   2. 入力が終わってから読み取るまでの間に画面が消え、読み取れない。
+ *      スマホの自動ロックは最短30秒。待合から移動する間に確実に消える。
+ *
+ *   1 の対策の本体は「この画面に消去ボタンが無い」こと。押しにくくするのではなく、
+ *   押せる場所に置かない。2 の対策は Screen Wake Lock。
+ *
+ * ★ページ側が用意するもの: id="scanOpen" のボタン（QRの近く）。ここが見つけて配線する。
+ *   呼び出し側は render のたびに sync(QRが出ているか) を呼ぶ。
+ *
+ * ★スクリーンショットをこちらから撮ることはできない（Webにそのための API が無い。
+ *   getDisplayMedia は iOS で使えず、選択ダイアログも出るので患者には使えない）。
+ *   できるのは案内だけなので、Wake Lock が効かない端末にだけ「撮っておいてください」を出す。
+ *
+ * ★CSS をこのファイル（JS）から差し込んでいる理由: スタイルシートが
+ *   成人日本語版（template.html 内の <style>）と他3版（form-style.css）で別々にあり、
+ *   同じ指定を2か所に置くと片方だけ直す事故が起きる。変数名（--panel 等）は両方で共通。
+ */
+function setupScanMode(texts, info) {
+  const style = document.createElement('style');
+  style.textContent = `
+    /* ★白地・黒文字で固定する。ダークモードの灰色地だとコントラストが落ちて
+       読み取りが不安定になる。画面も明るいほうが通りやすい。 */
+    #scanOverlay { position: fixed; inset: 0; z-index: 9999; background: #fff; color: #000;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      padding: 10px 10px 16px; overflow: auto }
+    #scanBar { display: flex; align-items: flex-start; gap: 10px; width: 100%;
+      max-width: 560px }
+    #scanInfo { flex: 1; min-width: 0; font-size: .9rem; line-height: 1.5 }
+    #scanInfo b { font-size: 1.15rem }
+    #scanInfo span { color: #555 }
+    #scanClose { flex: none; font: inherit; min-height: 44px; padding: 10px 16px;
+      border: 1px solid #888; border-radius: 8px; background: #f2f2f2; color: #000 }
+    #scanLead { margin: 0; font-weight: 700 }
+    /* ★補間させない。滑らかに拡大するとモジュールの境界がぼけて読み取りが落ちる。 */
+    #scanQR canvas { display: block; width: min(94vw, 68vh); height: auto;
+      image-rendering: pixelated }
+    #scanHint { max-width: 560px; margin: 0; font-size: .86rem; color: #333;
+      border: 1px solid #ccc; border-radius: 8px; padding: 10px; background: #fafafa }
+    /* QRのすぐ下に置く患者向けのボタン。消去ボタン（.danger / .reset）とは
+       別の見た目にして、間違えて押されないようにする。 */
+    #scanOpen { display: block; width: 100%; margin: 12px 0 4px; min-height: 52px;
+      font-size: 1.05rem; font-weight: 700;
+      border: 2px solid var(--accent); border-radius: 10px;
+      background: var(--accent); color: #fff; cursor: pointer }
+  `;
+  document.head.appendChild(style);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'scanOverlay';
+  overlay.hidden = true;
+  overlay.innerHTML =
+    '<div id="scanBar"><div id="scanInfo"></div>' +
+    '<button type="button" id="scanClose"></button></div>' +
+    '<p id="scanLead"></p><div id="scanQR"></div><p id="scanHint" hidden></p>';
+  document.body.appendChild(overlay);
+
+  const closeBtn = overlay.querySelector('#scanClose');
+  const infoBox = overlay.querySelector('#scanInfo');
+  const qrBox = overlay.querySelector('#scanQR');
+  const hint = overlay.querySelector('#scanHint');
+  closeBtn.textContent = texts.close;
+  overlay.querySelector('#scanLead').textContent = texts.lead;
+  hint.textContent = texts.hint;
+
+  /* ---- 画面を消させない ---- */
+
+  /* 使えない端末がある: iOS は 16.4 以降、ホーム画面に追加した版では 18.4 以降。
+     省電力モードや電池残量でも断られる。断られたら案内文に切り替えるだけで、
+     入力や読み取りそのものは妨げない。 */
+  const supported = 'wakeLock' in navigator;
+  let lock = null;      // WakeLockSentinel。離されたら null に戻す
+  let want = false;     // QRが出ている間だけ true
+  let refused = false;  // 要求が断られた（案内文を出す）
+
+  async function acquire() {
+    if (!want || lock || !supported) return;
+    try {
+      lock = await navigator.wakeLock.request('screen');
+      refused = false;
+      /* 画面を手で消された・タブを離れた等でも外れる。null に戻して再取得できるように。 */
+      lock.addEventListener('release', () => { lock = null; });
+    } catch (_) {
+      lock = null;
+      refused = true;
+    }
+    showHint();
+  }
+
+  function drop() {
+    if (!lock) return;
+    const held = lock;
+    lock = null;
+    held.release().catch(() => { /* すでに外れている */ });
+  }
+
+  function showHint() {
+    hint.hidden = !(!supported || refused);
+  }
+  showHint();
+
+  /* タブを離れると Wake Lock は外れる。戻ってきたら取り直す。 */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') acquire();
+  });
+
+  /* ---- 開く・閉じる ---- */
+
+  /* Android の戻るボタンで閉じられるようにする。pushState しておかないと、
+     戻るでフォームごと離脱してしまう。file:// では throw するので握る。 */
+  let pushed = false;
+
+  function open() {
+    const src = document.querySelector('#qrbox canvas');
+    if (!src) return;
+    /* canvas は cloneNode では中身が複製されないので描き写す。 */
+    const big = document.createElement('canvas');
+    big.width = src.width;
+    big.height = src.height;
+    big.getContext('2d').drawImage(src, 0, 0);
+    qrBox.replaceChildren(big);
+
+    infoBox.innerHTML = info()
+      .filter(([, v]) => v)
+      .map(([label, v], i) => '<div><span>' + esc(label) + '</span> ' +
+        (i === 0 ? '<b>' + esc(v) + '</b>' : esc(v)) + '</div>')
+      .join('');
+
+    overlay.hidden = false;
+    document.body.style.overflow = 'hidden';
+    closeBtn.focus();
+    acquire();
+
+    if (!pushed) {
+      try { history.pushState({ scanMode: 1 }, '', location.href); pushed = true; } catch (_) { /* file:// */ }
+    }
+  }
+
+  function close(fromPop) {
+    overlay.hidden = true;
+    qrBox.replaceChildren();
+    document.body.style.overflow = '';
+    drop();
+    if (pushed) {
+      pushed = false;
+      if (!fromPop) { try { history.back(); } catch (_) { /* 何もしない */ } }
+    }
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  const openBtn = document.getElementById('scanOpen');
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', () => close(false));
+  window.addEventListener('popstate', () => { if (!overlay.hidden) close(true); else pushed = false; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close(false); });
+
+  return {
+    /* render のたびに呼ぶ。QRが無い間はボタンも出さず、Wake Lock も持たない。 */
+    sync(hasQR) {
+      openBtn.hidden = !hasQR;
+      want = hasQR;
+      if (hasQR) acquire();
+      else { drop(); if (!overlay.hidden) close(false); }
+    },
+  };
+}
+
+if (typeof module !== 'undefined') module.exports = { setupScanMode };
+
+</script>
+<script>
 /* ================= 画面側 ================= */
 const $ = (id) => document.getElementById(id);
 
@@ -1399,6 +1583,7 @@ function render() {
     $('formError').textContent = err;
     if (err) {
       $('qrbox').replaceChildren(); $('meta').innerHTML = ''; $('alerts').innerHTML = '';
+      scan.sync(false);
       return;
     }
   }
@@ -1411,6 +1596,7 @@ function render() {
     alerts.push(['warn', e.message + ' その他欄を短くするか、誤り訂正を L にしてください。']);
   }
 
+  scan.sync(!!res);
   if (res) {
     drawQR(res, scale);
     $('meta').innerHTML =
@@ -1442,6 +1628,30 @@ function render() {
     .map(([k, m]) => '<div class="alert ' + k + '">' + m + '</div>').join('');
 }
 
+/* ---- 読み取りモード（scan-mode.js） ----
+   作成日時を出しているのは、画面が消える端末でスクリーンショットを撮ってもらう場合に、
+   その画像が日付を持つようにするため。日付の無いQR画像は次回受診で使い回され、
+   古い症状がそのままカルテに入る。 */
+const scan = setupScanMode({
+  close: 'とじる',
+  lead: 'この画面をお見せください',
+  hint: 'この端末では画面が消えるのを止められません。消えてしまうときは、スクリーンショットを撮っておいてください。',
+}, () => {
+  const b = dob();
+  return [
+    ['お名前', $('name').value.trim()],
+    ['生年月日', b ? b.year + '年' + b.m + '月' + b.d + '日（' + b.age + '歳）' : ''],
+    ['作成', nowStamp()],
+  ];
+});
+
+function nowStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) +
+    ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
 /* ---- 次の患者に渡す前のリセット ----
    二度確認（clear-guard.js）。「読み取り完了」の文言とダイアログ1回では、
    QRを見せ終わった患者さんが押して OK してしまい、入力が消える事故があった。 */
@@ -1467,6 +1677,7 @@ guardClear($('reset'), {
   overrideText = null;
   touched = false;
   eraBeforeAuto = null;
+  scan.sync(false);
   render();
   $('out').textContent = '';
   window.scrollTo({ top: 0, behavior: 'smooth' });
