@@ -5,7 +5,7 @@
  *   埋めないと端末が古いページを永久に出し続ける（版ずれの最悪形）。
  *   版が変われば別キャッシュになり、activate で古いものを消す。
  */
-const VERSION = '2026-11-09 86b8133';
+const VERSION = '2026-11-19 e36609e';
 const CACHE = 'er-monshin-' + VERSION;
 
 const ASSETS = [
@@ -18,6 +18,8 @@ const ASSETS = [
   './ped/index.html',
   './ped/en/',
   './ped/en/index.html',
+  './moshikomi/',
+  './moshikomi/index.html',
   './qr/',
   './qr/index.html',
   './qr/manifest.json',

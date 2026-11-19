@@ -91,7 +91,7 @@
 <div class="wrap">
 
 <h1>救急外来 問診</h1>
-<p class="hint"><a href="./ped/">小児版</a> ／ <a href="./en/" lang="en">English</a></p>
+<p class="hint"><a href="./ped/">小児版</a> ／ <a href="./en/" lang="en">English</a> ／ <a href="./moshikomi/">診療申込書</a></p>
 <p class="lead">
   お答えいただいた内容は<b>この端末の外に出ません</b>（送信ボタンはありません）。
   最後に表示される QR コードを、受付でお見せください。
@@ -202,6 +202,44 @@
     <div><label for="emName">氏名・続柄</label><input type="text" id="emName" placeholder="例: 山田 花子（妻）"></div>
     <div><label for="emPhone">電話番号</label><input type="text" id="emPhone" inputmode="tel" placeholder="例: 090-1234-5678"></div>
   </div>
+</section>
+
+<!-- ========== 1-2. 診療申込書（初診のみ） ==========
+     ★初めての方は、紙の「診療申込書」も必要。お名前・生年月日・性別・フリガナ・きっかけ・
+     緊急連絡先は上の欄をそのまま使い、申込書にしか無い項目だけをここで聞く。
+     QR は問診とは別に2つ目を出す（患者登録と問診は読み取る画面が違うため）。 -->
+<section id="secMoshikomi" hidden>
+  <h2>1-2. 診療申込書（初めての方）</h2>
+  <p class="hint" style="margin:-4px 0 8px">
+    初めての方は、紙の診療申込書の代わりにここも入力してください。
+    お名前・生年月日などは上で入力したものを使います（もう一度入力する必要はありません）。
+  </p>
+
+  <label>ご希望の受診科</label>
+  <div class="chips" id="mDepts"></div>
+  <p class="hint">分からなければ選ばなくて構いません。</p>
+
+  <div class="row">
+    <div class="field"><label for="mHeight">身長（分かれば）</label>
+      <input type="text" id="mHeight" inputmode="decimal" placeholder="例: 165（cm）"></div>
+    <div class="field"><label for="mWeight">体重（分かれば）</label>
+      <input type="text" id="mWeight" inputmode="decimal" placeholder="例: 60（kg）"></div>
+  </div>
+
+  <h3>ご住所</h3>
+  <div class="row">
+    <div class="field" style="flex:1 1 140px"><label for="mZip">郵便番号</label>
+      <input type="text" id="mZip" inputmode="numeric" autocomplete="off" placeholder="例: 270-0034"></div>
+    <div class="field" style="flex:1 1 140px"><label for="mPref">都道府県</label>
+      <select id="mPref"><option value="">—</option></select></div>
+    <div class="field"><label for="mCity">市区町村</label>
+      <input type="text" id="mCity" autocomplete="off" placeholder="例: 松戸市"></div>
+  </div>
+  <label for="mAddr">町名・番地・建物名・部屋番号</label>
+  <input type="text" id="mAddr" autocomplete="off" placeholder="例: 新松戸1-1-1 ○○マンション101号室">
+
+  <label for="mPhone">電話番号（つながりやすい番号）</label>
+  <input type="text" id="mPhone" inputmode="tel" autocomplete="off" placeholder="例: 090-1234-5678">
 </section>
 
 <!-- ========== 2. 分岐 ========== -->
@@ -400,6 +438,21 @@
   <label>電子カルテに入る文字列</label>
   <pre id="out"></pre>
 
+  <!-- 初診のとき2つ目のQR（診療申込書）。問診のQRと取り違えないよう、色と見出しを変える -->
+  <div id="mQrBlock" hidden style="margin-top:22px;padding-top:14px;border-top:4px solid #6b4fbb">
+    <h3 style="color:#6b4fbb;margin-top:0">診療申込書のQR（受付で患者登録に使います）</h3>
+    <div id="mFormError" class="alert warn" hidden></div>
+    <div id="qrbox2" style="display:flex;justify-content:center;padding:18px;background:#fff;border-radius:8px"></div>
+    <div class="meta" id="meta2"></div>
+    <div id="alerts2"></div>
+    <button type="button" id="scanOpen2" hidden data-scan-src="#qrbox2 canvas"
+      data-scan-lead="【診療申込書】受付でお見せください"
+      style="display:block;width:100%;margin:12px 0 4px;min-height:52px;font-size:1.05rem;font-weight:700;border:2px solid #6b4fbb;border-radius:10px;background:#6b4fbb;color:#fff">
+      診療申込書のQRを大きく表示</button>
+    <label>電子カルテに入る文字列（診療申込書）</label>
+    <pre id="out2"></pre>
+  </div>
+
   <!-- ★畳んである。二度確認にしても押される事故が続いたため「開く→1回目→2回目」の3手。 -->
   <details class="staff" style="margin-top:20px">
     <summary>職員用（次の患者さんに渡す前に）</summary>
@@ -424,7 +477,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-11-09 86b8133</b>
+  版: <b>2026-11-19 e36609e</b>
 </p>
 
 </div>
@@ -1248,9 +1301,14 @@ function setupScanMode(texts, info) {
      戻るでフォームごと離脱してしまう。file:// では throw するので握る。 */
   let pushed = false;
 
-  function open() {
-    const src = document.querySelector('#qrbox canvas');
+  /* ★QR が2つあるページ（成人問診の初診＝問診＋診療申込書）では、2つ目のボタンに
+     data-scan-src（写すQRの場所）と data-scan-lead（見出し）を付ける。どのQRを出しているかを
+     見出しで必ず示す（受付が別のQRを読んで患者登録に問診が入る、を防ぐ）。 */
+  function open(e) {
+    const btn = e && e.currentTarget;
+    const src = document.querySelector((btn && btn.dataset.scanSrc) || '#qrbox canvas');
     if (!src) return;
+    overlay.querySelector('#scanLead').textContent = (btn && btn.dataset.scanLead) || texts.lead;
     /* canvas は cloneNode では中身が複製されないので描き写す。 */
     const big = document.createElement('canvas');
     big.width = src.width;
@@ -1291,6 +1349,7 @@ function setupScanMode(texts, info) {
 
   const openBtn = document.getElementById('scanOpen');
   openBtn.addEventListener('click', open);
+  for (const b of document.querySelectorAll('[data-scan-src]')) b.addEventListener('click', open);
   closeBtn.addEventListener('click', () => close(false));
   window.addEventListener('popstate', () => { if (!overlay.hidden) close(true); else pushed = false; });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close(false); });
@@ -1307,6 +1366,125 @@ function setupScanMode(texts, info) {
 }
 
 if (typeof module !== 'undefined') module.exports = { setupScanMode };
+
+</script>
+<script>
+/* 診療申込書 — 選択肢と、電子カルテへ入れる文字列の組み立て。
+ * 画面（moshikomi.html）から切り離してあるのは、node で単体テストするため（tests/test_moshikomi.js）。
+ *
+ * ★選択肢は紙の「診療申込書」（新松戸中央総合病院）の並びと文言そのまま。
+ *   紙と並びが違うと、受付で紙と画面を見比べる職員が迷う。紙を改訂したらここも直す。
+ */
+const MOSHIKOMI = {
+  // 今回の来院のきっかけ（複数可）。紙は左右2列。左列→右列の順に読む
+  triggers: [
+    '救急車での搬送',
+    '健診・人間ドックの結果（二次検査など）',
+    'ご自宅・職場が近い',
+    '当院ホームページ・SNS・動画を見て',
+    '他の医療機関からの紹介（紹介状あり）',
+    '公的機関・相談窓口からの紹介',
+    '家族・知人からの勧め',
+    '救急・時間外診療（休日・夜間など）',
+  ],
+  accident: [
+    '交通事故（自賠責など）',
+    '仕事中・通勤途中の病気・ケガ',
+  ],
+  // ご希望の受診科。紙の行ごと（左から）
+  depts: [
+    '内科', '腎臓高血圧内科', '糖尿病・内分泌代謝内科',
+    '消化器内科', '循環器内科', '呼吸器内科',
+    '脳神経内科', '血液内科', '泌尿器科', '腫瘍内科',
+    '外科', '呼吸器外科', '脳神経外科',
+    '心臓血管外科', '整形外科', '形成外科',
+    '耳鼻咽喉科', '皮膚科', '小児科', '小児外科',
+    '眼科', '婦人科', '乳腺外科',
+    '放射線治療科', '放射線科（検査）', '健診科', '救急科',
+  ],
+  prefs: [
+    '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+    '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+    '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
+    '岐阜県', '静岡県', '愛知県', '三重県',
+    '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
+    '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+    '徳島県', '香川県', '愛媛県', '高知県',
+    '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
+  ],
+  eras: { 1912: '大正', 1926: '昭和', 1989: '平成', 2019: '令和' },
+};
+
+/* ひらがな → カタカナ。紙のフリガナ欄にひらがなで書く人が多い（見本もひらがな）。
+   受付の登録画面はカタカナなので、こちらでそろえる。 */
+function toKatakana(s) {
+  return String(s).replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+}
+
+/* 生年月日。era は '1926' などの元号の元年（西暦）か 'seireki'。
+   年が4桁なら元号の選択にかかわらず西暦とみなす（問診フォームで「昭和1960年」になってQRが出ない事故があった）。
+   日付として存在しない（2/30 など）ものは null。 */
+function moshikomiDob(era, y, m, d, now) {
+  now = now || new Date();
+  y = parseInt(y, 10); m = parseInt(m, 10); d = parseInt(d, 10);
+  if (!y || !m || !d) return null;
+  const seireki = era === 'seireki' || (y >= 1000);
+  const year = seireki ? y : parseInt(era, 10) + y - 1;
+  if (!(year >= 1880) || year > now.getFullYear()) return null;
+  const dt = new Date(year, m - 1, d);
+  if (dt.getFullYear() !== year || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  if (dt > now) return null;
+  let age = now.getFullYear() - year;
+  if ((now.getMonth() + 1) * 100 + now.getDate() < m * 100 + d) age--;
+  const wareki = seireki ? '' : MOSHIKOMI.eras[era] + y + '年';
+  return { year, m, d, age, wareki, text: year + '/' + m + '/' + d + ' ' + age + '歳' };
+}
+
+/* 電子カルテへ入れる文字列。f は画面の入力（文字列と配列）。
+   ★先頭に氏名・フリガナ・生年月日を置く（貼った瞬間に取り違えを照合できるように。問診と同じ）。
+   空の項目は出さない。 */
+function buildMoshikomiText(f, sep, now) {
+  now = now || new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate() +
+    ' ' + p(now.getHours()) + ':' + p(now.getMinutes());
+  const v = (x) => String(x || '').trim().replace(/\s*\n\s*/g, ' ');
+  const join = (a) => a.filter(Boolean).join('、');
+
+  const b = moshikomiDob(f.era, f.byear, f.bmonth, f.bday, now);
+  const kana = v(f.kana) ? '(' + toKatakana(v(f.kana)) + ')' : '';
+  const head = '【診療申込書】' + [
+    v(f.pid) ? 'ID' + v(f.pid) : '',
+    v(f.name) || '氏名未入力',
+    kana,
+    b ? b.text : '生年月日未入力',
+    v(f.sex),
+  ].filter(Boolean).join(' ');
+
+  const items = [];
+  const add = (k, x) => { x = v(x); if (x) items.push(k ? k + ':' + x : x); };
+
+  add('作成', stamp);
+  add('', f.first);
+  add('受診希望科', join(f.depts || []));
+  const trig = (f.triggers || []).slice();
+  if (v(f.triggerOther)) trig.push('その他（' + v(f.triggerOther) + '）');
+  add('きっかけ', join(trig));
+  add('該当', join(f.accident || []));
+  add('身長', v(f.height) ? v(f.height) + 'cm' : '');
+  add('体重', v(f.weight) ? v(f.weight) + 'kg' : '');
+  const zip = v(f.zip) ? '〒' + v(f.zip) : '';
+  add('住所', [zip, v(f.pref) + v(f.city) + v(f.addr)].filter(Boolean).join(' '));
+  add('電話', f.phone);
+  const emRel = v(f.emRel) ? '（' + v(f.emRel) + '）' : '';
+  add('緊急連絡先', v(f.emPhone) || emRel ? (v(f.emPhone) || '番号未記入') + emRel : '');
+
+  return [head].concat(items).join(sep);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { MOSHIKOMI, toKatakana, moshikomiDob, buildMoshikomiText };
+}
 
 </script>
 <script>
@@ -1524,6 +1702,63 @@ PRESETS.forEach(([name, text]) => {
   $('presets').appendChild(b);
 });
 
+/* ---- 診療申込書（初診のときだけ。moshikomi-text.js） ----
+   上の欄（氏名・フリガナ・生年月日・性別・きっかけ・労災/自賠責・緊急連絡先・診察券番号）を引き継ぎ、
+   申込書にしか無い欄（受診科・身長・住所・電話）を足して2つ目のQRにする。 */
+mkChips('mDepts', MOSHIKOMI.depts);
+mkOptions('mPref', MOSHIKOMI.prefs.map((p) => [p, p]));
+const INS_TO_MOSHIKOMI = { '交通事故（自賠責）': '交通事故（自賠責など）', '仕事中・通勤途中': '仕事中・通勤途中の病気・ケガ' };
+
+function moshikomiForm() {
+  const trig = $('trigger').value;
+  return {
+    first: '初診',
+    triggers: trig ? [trig + ($('reffrom').value ? '（' + $('reffrom').value + '）' : '')] : [],
+    accident: checked('insurance').map((v) => INS_TO_MOSHIKOMI[v]).filter(Boolean),
+    depts: checked('mDepts'),
+    name: $('name').value, kana: $('kana').value, sex: $('sex').value,
+    era: $('era').value, byear: $('byear').value, bmonth: $('bmonth').value, bday: $('bday').value,
+    height: $('mHeight').value, weight: $('mWeight').value || $('weight').value,
+    zip: $('mZip').value, pref: $('mPref').value, city: $('mCity').value, addr: $('mAddr').value,
+    phone: $('mPhone').value, emPhone: $('emPhone').value, emRel: $('emName').value, pid: $('pid').value,
+  };
+}
+
+function renderMoshikomi(ok) {
+  const on = $('first').value === '初診';
+  $('secMoshikomi').hidden = !on;
+  $('mQrBlock').hidden = !on;
+  if (!on) { $('scanOpen2').hidden = true; return; }
+  const sepv = $('sep').value;
+  const sep = sepv === 'nl' ? '|' : SEP_CHAR[sepv];
+  const enc = encodeSJIS(buildMoshikomiText(moshikomiForm(), sep));
+  $('out2').textContent = enc.delivered;
+  $('mFormError').hidden = ok || !touched;
+  $('mFormError').textContent = 'お名前と生年月日を入れると、診療申込書のQRも出ます。';
+  let res = null;
+  const alerts = [];
+  if (ok) {
+    try { res = qrFromBytes(enc.bytes, $('ec').value); }
+    catch (e) { alerts.push(['warn', e.message + ' 誤り訂正を L にしてください。']); }
+  }
+  $('scanOpen2').hidden = !res;
+  if (res) {
+    drawQR(res, +$('scale').value, 'qrbox2');
+    $('meta2').innerHTML = '<span class="badge">Shift-JIS <b>' + enc.bytes.length + '</b> バイト</span>' +
+      '<span class="badge">型番 <b>v' + res.version + '</b></span>';
+  } else { $('qrbox2').replaceChildren(); $('meta2').innerHTML = ''; }
+  const miss = [];
+  if (ok && !$('kana').value.trim()) miss.push('フリガナ');
+  if (ok && !$('sex').value) miss.push('性別');
+  if (ok && !$('mPhone').value.trim()) miss.push('電話番号');
+  if (ok && !$('mCity').value.trim() && !$('mAddr').value.trim()) miss.push('ご住所');
+  if (miss.length) alerts.push(['ok', '診療申込書でまだ入っていない項目: ' + miss.join('・') + '（分かる範囲で入力してください）']);
+  if (enc.dropped.length) alerts.push(['warn', 'Shift-JISに変換できない文字を「〓」に置き換えました → ' +
+    [...new Set(enc.dropped.map((d) => d.ch))].join(' ') + '　※お名前・ご住所の字は受付で確認してください。']);
+  $('alerts2').innerHTML = alerts.map(([k]) => '<div class="alert ' + k + '"></div>').join('');
+  [...$('alerts2').children].forEach((el, i) => { el.textContent = alerts[i][1]; });
+}
+
 /* ---- 描画 ---- */
 /* enc.normalized は「〓」に置き換える前の文字列なので、そのまま出すと
    実際にカルテへ入るものと食い違う。バイト列から戻した enc.delivered（実物）を出す。
@@ -1533,7 +1768,7 @@ function deliveredText(enc) {
   return enc.delivered;
 }
 
-function drawQR(res, scale) {
+function drawQR(res, scale, target = 'qrbox') {
   const quiet = 4;
   const n = res.size + quiet * 2;
   const cv = document.createElement('canvas');
@@ -1546,7 +1781,7 @@ function drawQR(res, scale) {
     for (let c = 0; c < res.size; c++)
       if (res.modules[r][c])
         g.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
-  $('qrbox').replaceChildren(cv);
+  $(target).replaceChildren(cv);
 }
 
 /* 入力しながらQRが育つ（この画面は最初からそう作ってある）。氏名・生年月日が
@@ -1584,6 +1819,7 @@ function render() {
     if (err) {
       $('qrbox').replaceChildren(); $('meta').innerHTML = ''; $('alerts').innerHTML = '';
       scan.sync(false);
+      renderMoshikomi(false);
       return;
     }
   }
@@ -1626,6 +1862,7 @@ function render() {
 
   $('alerts').innerHTML = alerts
     .map(([k, m]) => '<div class="alert ' + k + '">' + m + '</div>').join('');
+  renderMoshikomi(overrideText === null);
 }
 
 /* ---- 読み取りモード（scan-mode.js） ----
@@ -1634,7 +1871,7 @@ function render() {
    古い症状がそのままカルテに入る。 */
 const scan = setupScanMode({
   close: 'とじる',
-  lead: 'この画面をお見せください',
+  lead: '【問診】この画面をお見せください',
   hint: 'この端末では画面が消えるのを止められません。消えてしまうときは、スクリーンショットを撮っておいてください。',
 }, () => {
   const b = dob();
