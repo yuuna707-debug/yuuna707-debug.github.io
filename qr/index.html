@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#1a7a3d">
-<title>貼り付け → Shift-JIS QR</title>
+<title>貼り付け → QR（電子カルテ用）</title>
 <style>
   :root{
     --bg:#f5f6f8; --panel:#fff; --ink:#1b1f24; --sub:#5b6470;
@@ -72,9 +72,10 @@
 <body>
 <div class="wrap">
 
-<h1>貼り付け → Shift-JIS QR</h1>
+<h1>貼り付け → QR（電子カルテ用）</h1>
 <p class="lead">
-  テキストを貼り付けると Shift-JIS(cp932) の QR コードになります。
+  テキストを貼り付けると QR コードになります。文字コードは既定で Shift-JIS(cp932) です
+  （新しいリーダで読めないときは「文字コード」を替えて試せます）。
   通信しません。入力内容は端末の外に出ません。
   他のアプリの「共有」からこの画面へ直接渡すこともできます（受け取った文章は画面に入れた時点で消します）。
 </p>
@@ -112,6 +113,10 @@
         <option value="Q">Q（頑丈）</option>
         <option value="H">H（最も頑丈）</option>
       </select>
+    </div>
+    <div>
+      <label for="qrCharset">文字コード</label>
+      <select id="qrCharset"></select>
     </div>
     <div>
       <label for="scale">QRの大きさ <span id="scaleVal"></span></label>
@@ -159,7 +164,7 @@
 <p class="foot">
   このページは通信しません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-11-19 e36609e</b>
+  版: <b>2026-11-24 5ada041</b>
 </p>
 
 </div>
@@ -302,8 +307,9 @@ function sjisRev() {
  *   delivered … バイト列をそのまま文字に戻したもの＝スキャナが実際に送る文字列
  *   changed   … 正規化・置換で別の字に読み替えたもの（幅だけの変換は除く・重複なし）
  */
-function encodeSJIS(text, opts) {
+function encodeText(text, opts) {
   opts = opts || {};
+  const charset = opts.charset === 'utf8' ? 'utf8' : 'cp932';
   const raw = String(text);
   const prep = (x) => {
     if (opts.normalize !== false) x = normalizeSJIS(x);
@@ -311,7 +317,7 @@ function encodeSJIS(text, opts) {
     return _applySubs(opts.keepCR ? x : x.replace(/\r\n?/g, '\n'));
   };
   const s = prep(raw);
-  const enc = _encodePrepared(s);
+  const enc = _encodePrepared(s, charset);
 
   /* 読み替えた字の一覧。行き先は「実際にカルテへ入る字」で示す（正規化の途中の字ではない）。
      ¼ は 1⁄4 ではなく 1〓4、− は －。全部が 〓 になる字は dropped の警告に出るので載せない。 */
@@ -320,15 +326,45 @@ function encodeSJIS(text, opts) {
   for (const ch of raw) {
     if (seen.has(ch) || ch === '\r' || _isWidthOnly(ch.codePointAt(0))) continue;
     seen.add(ch);
-    const to = _encodePrepared(prep(ch)).delivered;
+    const to = _encodePrepared(prep(ch), charset).delivered;
     if (to !== ch && to !== SJIS_REPL) changed.push({ from: ch, to: to });
   }
   return { bytes: enc.bytes, dropped: enc.dropped, normalized: s,
-           delivered: enc.delivered, changed: changed };
+           delivered: enc.delivered, changed: changed, charset: charset };
 }
 
-/* 正規化・置換を済ませた文字列をバイト列にする（encodeSJIS の下請け） */
-function _encodePrepared(s) {
+/* これまでの呼び名。cp932 固定。既存の呼び出しを壊さないために残す。 */
+function encodeSJIS(text, opts) {
+  return encodeText(text, Object.assign({}, opts, { charset: 'cp932' }));
+}
+
+/* 正規化・置換を済ませた文字列をバイト列にする（encodeText の下請け）。
+ *
+ * ★UTF-8 のときは変換できない字が無いので dropped は常に空になる。
+ *   ただし「カルテに入る」ことまでは保証しない。カルテ本体が Shift-JIS なら
+ *   cp932 に無い字（𠮷 など）は向こう側で化ける。UTF-8 にすると、
+ *   この画面で気づく手がかりが無くなる（cp932 では 〓 で見えていた）。 */
+function _encodePrepared(s, charset) {
+  if (charset === 'utf8') {
+    /* ★TextEncoder を使わず自前で組む。この表は WebView（Androidアプリが同梱する
+       QR変換画面）や file:// 配布でも動く必要があり、環境に依存させたくない。
+       for...of はサロゲートペアを1文字として回すので、絵文字や 𠮷 も4バイトで正しく出る。 */
+    const out = [];
+    for (const ch of s) {
+      const cp = ch.codePointAt(0);
+      if (cp < 0x80) {
+        out.push(cp);
+      } else if (cp < 0x800) {
+        out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+      } else if (cp < 0x10000) {
+        out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+      } else {
+        out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f),
+                 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+      }
+    }
+    return { bytes: out, dropped: [], delivered: s };
+  }
   const map = sjisMap();
   const rev = sjisRev();
   const out = [];
@@ -422,20 +458,41 @@ function charCountBits(version) {
   return version <= 9 ? 8 : 16; // 8ビットバイトモード
 }
 
-function chooseVersion(byteLen, ec, minVersion) {
+/* ECI ヘッダのビット数。モード指示子 0111（4）＋ ECI 指定子。
+   0〜127 は1バイト（0xxxxxxx）なので 4+8=12 ビット。128 以上は使わない。
+   ★ここを数え忘れると、容量ぎりぎりのときに溢れて壊れたQRになる。 */
+function eciBits(eci) {
+  if (eci == null) return 0;
+  /* ★0〜127 しか扱わない。128 以上は指定子が 16/24 ビットになり、
+     ここと buildCodewords の put(eci, 8) の両方が狂う（容量計算が合わず、
+     読めないQRが黙って出る）。いま使うのは UTF-8 の 26 だけなので弾く。 */
+  if (!Number.isInteger(eci) || eci < 0 || eci > 127) {
+    throw new Error('ECI は 0〜127 の整数だけ扱います（指定: ' + eci + '）');
+  }
+  return 12;
+}
+
+function chooseVersion(byteLen, ec, minVersion, eci) {
   for (let v = minVersion || 1; v <= 40; v++) {
-    const need = 4 + charCountBits(v) + byteLen * 8;
+    const need = eciBits(eci) + 4 + charCountBits(v) + byteLen * 8;
     if (need <= dataCodewords(v, ec) * 8) return v;
   }
   return null; // 容量オーバー
 }
 
-function buildCodewords(bytes, version, ec) {
+function buildCodewords(bytes, version, ec, eci) {
   const cap = dataCodewords(version, ec);
   const bits = [];
   const put = (val, len) => {
     for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
   };
+  /* ISO/IEC 18004: ECI を使うときは、データの先頭にモード指示子 0111 ＋
+     ECI 指定子を置き、そのあとに通常のモードが続く。UTF-8 は ECI 26。
+     付ける/付けないで読めるリーダが分かれるので選べるようにしてある。 */
+  if (eci != null) {
+    put(0b0111, 4);
+    put(eci, 8);
+  }
   put(0b0100, 4);
   put(bytes.length, charCountBits(version));
   for (const b of bytes) put(b, 8);
@@ -713,12 +770,12 @@ function penalty(m) {
  * バイト列から QR のモジュール行列を作る。
  * @returns {{modules:number[][], size:number, version:number, ec:string, mask:number}}
  */
-function qrFromBytes(bytes, ec, minVersion, forceMask) {
+function qrFromBytes(bytes, ec, minVersion, forceMask, eci) {
   ec = ec || 'M';
-  const version = chooseVersion(bytes.length, ec, minVersion);
+  const version = chooseVersion(bytes.length, ec, minVersion, eci);
   if (!version) throw new Error('データが大きすぎてQRに入りません（' + bytes.length + ' バイト）');
 
-  const words = interleave(buildCodewords(bytes, version, ec), version, ec);
+  const words = interleave(buildCodewords(bytes, version, ec, eci), version, ec);
   const base = buildFunctionPatterns(version);
   const raw = placeData(base, words);
 
@@ -740,12 +797,14 @@ function qrFromBytes(bytes, ec, minVersion, forceMask) {
 }
 
 /** 容量の上限（そのバージョン/ECレベルで入るバイト数） */
-function maxBytes(version, ec) {
-  return dataCodewords(version, ec) - Math.ceil((4 + charCountBits(version)) / 8);
+function maxBytes(version, ec, eci) {
+  return dataCodewords(version, ec) -
+    Math.ceil((eciBits(eci) + 4 + charCountBits(version)) / 8);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { encodeSJIS, normalizeSJIS, SJIS_REPL, qrFromBytes, chooseVersion, dataCodewords, maxBytes, sjisMap };
+  module.exports = { encodeText, encodeSJIS, normalizeSJIS, SJIS_REPL, qrFromBytes,
+    chooseVersion, dataCodewords, maxBytes, sjisMap, eciBits };
 }
 
 </script>
@@ -856,6 +915,66 @@ if (typeof module !== 'undefined' && module.exports) {
 
 </script>
 <script>
+/* QR の文字コード切替。4フォーム・申込書・QR変換で共通（build.py が <!--CHARSET--> に差し込む）。
+ *
+ * ★なぜ切替が要るか
+ *   2026-11-24 の電子カルテ入れ替えで QR リーダが替わり、**Shift-JIS のQRが読めなくなった**。
+ *   ハード側（リーダの設定で読めるようにならないか）を調べている間、同じ中身を
+ *   3通りの符号化で出して実機で見比べられるようにしてある。
+ *
+ * ★既定は cp932（いままで通り）から動かさない。
+ *   どれが通るか実機で決まるまで、患者さんが開く画面の既定を変えてはいけない。
+ *
+ * ★UTF-8 にすると日本語は 2バイト→3バイトになり、**QRが4〜5割大きくなる**。
+ *   問診1件なら実績の範囲に収まるが、長文の分割（既定400字）は入らなくなる。
+ *   qrsplit の既定は実機でUTF-8に決まってから下げること（約300字が目安）。
+ *
+ * ★ECI 26 は「この中身は UTF-8 だ」という宣言。付けると読めるリーダと、
+ *   付けない方が読めるリーダの両方がある。だから別の選択肢にしてある。
+ */
+const QR_CHARSETS = [
+  { key: 'cp932', label: 'Shift-JIS（従来）', charset: 'cp932', eci: null },
+  { key: 'utf8', label: 'UTF-8', charset: 'utf8', eci: null },
+  { key: 'utf8eci', label: 'UTF-8＋ECI', charset: 'utf8', eci: 26 },
+];
+
+/* URL の ?qr=utf8 などで初期値を決められる。
+   実機で試すとき、掲示やブックマークから「その符号化で開く」ができるようにするため
+   （職員が毎回プルダウンを選び直さなくてよい）。 */
+function qrCharsetFromUrl() {
+  try {
+    const v = new URLSearchParams(location.search).get('qr');
+    return QR_CHARSETS.find((x) => x.key === v) ? v : null;
+  } catch (_) {
+    return null;   // file:// の古い環境など
+  }
+}
+
+function qrCharsetOptionsHtml() {
+  return QR_CHARSETS.map((x) => '<option value="' + x.key + '">' + x.label + '</option>').join('');
+}
+
+/* select を初期化する。URL 指定があればそれを選ぶ。戻り値は現在の設定。 */
+function qrCharsetInit(select) {
+  if (!select) return;
+  if (!select.options.length) select.innerHTML = qrCharsetOptionsHtml();
+  const fromUrl = qrCharsetFromUrl();
+  if (fromUrl) select.value = fromUrl;
+}
+
+/* いま選ばれている設定。select が無いページ・壊れた値のときは cp932 に倒す
+   （読めないQRを出すより、いままで通りを出す方が安全）。 */
+function qrCharsetNow(select) {
+  const key = select ? select.value : qrCharsetFromUrl();
+  return QR_CHARSETS.find((x) => x.key === key) || QR_CHARSETS[0];
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { QR_CHARSETS, qrCharsetOptionsHtml, qrCharsetInit, qrCharsetNow, qrCharsetFromUrl };
+}
+
+</script>
+<script>
 const $ = (id) => document.getElementById(id);
 
 /* 改行コードの実機確認（L-46X→電子カルテ）:
@@ -949,12 +1068,13 @@ function render() {
 
   /* 変換できない文字・読み替えた文字は文書全体で拾う（いま見ている1枚だけ見ても気づけない）。
      読み替えは正規化「前」の原文と比べないと分からないので、原文から取る。 */
-  const whole = encodeSJIS(sourceText(), { keepCR: keepCR() });
-  const encs = chunks.map((c) => encodeSJIS(c, { keepCR: keepCR() }));
+  const cs = qrCharsetNow($('qrCharset'));
+  const whole = encodeText(sourceText(), { keepCR: keepCR(), charset: cs.charset });
+  const encs = chunks.map((c) => encodeText(c, { keepCR: keepCR(), charset: cs.charset }));
   const totalBytes = encs.reduce((n, e) => n + e.bytes.length, 0);
 
   const alerts = [];
-  const hardMax = maxBytes(40, ec);
+  const hardMax = maxBytes(40, ec, cs.eci);
   const over = encs
     .map((e, i) => ({ i: i + 1, n: e.bytes.length }))
     .filter((x) => x.n > hardMax);
@@ -980,7 +1100,7 @@ function render() {
   const cur = encs[pageIndex];
   if (cur && cur.bytes.length <= hardMax) {
     try {
-      res = qrFromBytes(cur.bytes, ec);
+      res = qrFromBytes(cur.bytes, ec, undefined, undefined, cs.eci);
     } catch (e) {
       alerts.push(['warn', esc(e.message)]);
     }
@@ -994,17 +1114,17 @@ function render() {
   if (res) {
     $('qrbox').replaceChildren(makeCanvas(res, scale));
     $('meta').innerHTML =
-      '<span class="badge">Shift-JIS <b>' + cur.bytes.length + '</b> バイト</span>' +
+      '<span class="badge">' + cs.label + ' <b>' + cur.bytes.length + '</b> バイト</span>' +
       '<span class="badge">型番 <b>v' + res.version + '</b> (' + res.size + '×' + res.size + ')</span>' +
       '<span class="badge">誤り訂正 <b>' + ec + '</b></span>' +
-      '<span class="badge">この型番の上限 <b>' + maxBytes(res.version, ec) + '</b> バイト</span>' +
+      '<span class="badge">この型番の上限 <b>' + maxBytes(res.version, ec, cs.eci) + '</b> バイト</span>' +
       (total >= 2
         ? '<span class="badge">全 <b>' + total + '</b> 枚 / 合計 <b>' + totalBytes + '</b> バイト</span>'
         : '');
   } else {
     $('qrbox').replaceChildren();
     $('meta').innerHTML = total === 0 ? '' :
-      '<span class="badge">Shift-JIS <b>' + (cur ? cur.bytes.length : 0) + '</b> バイト</span>';
+      '<span class="badge">' + cs.label + ' <b>' + (cur ? cur.bytes.length : 0) + '</b> バイト</span>';
   }
 
   if (over.length) {
@@ -1143,6 +1263,7 @@ async function loadShared() {
 
 document.addEventListener('input', render);
 document.addEventListener('change', render);
+qrCharsetInit($('qrCharset'));   // ?qr=utf8 などで初期値を決められる
 render();
 loadShared();
 </script>
