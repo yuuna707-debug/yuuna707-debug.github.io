@@ -483,7 +483,7 @@
 <p class="foot">
   このページは通信しません。入力内容は端末の外に出ず、どこにも保存されません。<br>
   QR生成部は python-qrcode と全40バージョン×4誤り訂正レベルで出力一致を確認済み。<br>
-  版: <b>2026-11-24 5ada041</b>
+  版: <b>2026-11-24 9f750f8</b>
 </p>
 
 </div>
@@ -638,7 +638,7 @@ function encodeText(text, opts) {
     const to = _encodePrepared(prep(ch), charset).delivered;
     if (to !== ch && to !== SJIS_REPL) changed.push({ from: ch, to: to });
   }
-  return { bytes: enc.bytes, dropped: enc.dropped, normalized: s,
+  return { bytes: enc.bytes, dropped: enc.dropped, beyondCp932: enc.beyondCp932, normalized: s,
            delivered: enc.delivered, changed: changed, charset: charset };
 }
 
@@ -658,21 +658,43 @@ function _encodePrepared(s, charset) {
     /* ★TextEncoder を使わず自前で組む。この表は WebView（Androidアプリが同梱する
        QR変換画面）や file:// 配布でも動く必要があり、環境に依存させたくない。
        for...of はサロゲートペアを1文字として回すので、絵文字や 𠮷 も4バイトで正しく出る。 */
+    const map = sjisMap();
     const out = [];
+    const dropped = [];
+    const beyond = [];
+    let delivered = '';
+    let i = 0;
     for (const ch of s) {
       const cp = ch.codePointAt(0);
-      if (cp < 0x80) {
-        out.push(cp);
-      } else if (cp < 0x800) {
-        out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
-      } else if (cp < 0x10000) {
-        out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+      if (cp >= 0xd800 && cp <= 0xdfff) {
+        /* ★対になっていないサロゲート（壊れた貼り付けなどで混じる）。
+           そのまま3バイトで出すと**不正なUTF-8**になり、読み手によって結果が変わる。
+           U+FFFD に替えて dropped に載せ、画面の警告に出す（黙って壊さない）。 */
+        out.push(0xef, 0xbf, 0xbd);
+        delivered += '\ufffd';
+        dropped.push({ ch: ch, index: i });
       } else {
-        out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f),
-                 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+        if (cp < 0x80) {
+          out.push(cp);
+        } else if (cp < 0x800) {
+          out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+        } else if (cp < 0x10000) {
+          out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+        } else {
+          out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f),
+                   0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+        }
+        delivered += ch;
+        /* ★UTF-8 で送れても、**電子カルテ本体が Shift-JIS なら向こうで化ける**。
+           cp932 のときは 〓 で画面に見えていた危険が、UTF-8 では見えなくなる。
+           だから置換はせず（UTF-8 の意味が無くなる）、「化けるかもしれない字」として知らせる。 */
+        if (cp >= 0x80 && !(cp >= 0xff61 && cp <= 0xff9f) && !map.get(ch)) {
+          beyond.push({ ch: ch, index: i });
+        }
       }
+      i += ch.length;
     }
-    return { bytes: out, dropped: [], delivered: s };
+    return { bytes: out, dropped: dropped, beyondCp932: beyond, delivered: delivered };
   }
   const map = sjisMap();
   const rev = sjisRev();
@@ -701,7 +723,7 @@ function _encodePrepared(s, charset) {
     }
     i += ch.length;
   }
-  return { bytes: out, dropped: dropped, delivered: delivered };
+  return { bytes: out, dropped: dropped, beyondCp932: [], delivered: delivered };
 }
 
 /* ---------------- ガロア体 GF(256) ---------------- */
@@ -1474,17 +1496,50 @@ function qrCharsetInit(select) {
   if (!select.options.length) select.innerHTML = qrCharsetOptionsHtml();
   const fromUrl = qrCharsetFromUrl();
   if (fromUrl) select.value = fromUrl;
+  /* ★帯はここでも出す。ページの render は「氏名が未入力」などで QR を出さずに
+     途中で戻ることがあり、そのあいだ qrCharsetNow が呼ばれない。
+     白紙のうちから帯が見えていないと、設定に気づかないまま患者さんに渡される。 */
+  select.addEventListener('change', () => qrCharsetNow(select));
+  qrCharsetNow(select);
 }
 
 /* いま選ばれている設定。select が無いページ・壊れた値のときは cp932 に倒す
-   （読めないQRを出すより、いままで通りを出す方が安全）。 */
+   （読めないQRを出すより、いままで通りを出す方が安全）。
+   ★ついでに帯も出し入れする。呼び忘れると「いつもと違う符号化なのに気づかない」が
+     起きるので、取得と同じ関数にまとめてある。 */
 function qrCharsetNow(select) {
   const key = select ? select.value : qrCharsetFromUrl();
-  return QR_CHARSETS.find((x) => x.key === key) || QR_CHARSETS[0];
+  const cs = QR_CHARSETS.find((x) => x.key === key) || QR_CHARSETS[0];
+  qrCharsetBanner(cs);
+  return cs;
+}
+
+/* ★既定（Shift-JIS）でないときは、画面のいちばん上に**畳まれていない帯**を出す。
+   切替は職員用の <details> の中と URL の ?qr= にあるので、どちらも
+   「開いていない／見ていない」状態になりうる。試験のつもりで開いた画面を
+   そのまま患者さんに渡すと、読めないQRのまま気づけない。 */
+function qrCharsetBanner(cs) {
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById('qrCharsetBanner');
+  if (cs.key === 'cp932') {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'qrCharsetBanner';
+    el.setAttribute('role', 'status');
+    el.style.cssText = 'position:sticky;top:0;z-index:50;background:#b3261e;color:#fff;' +
+      'padding:8px 12px;font-weight:700;font-size:.9rem;text-align:center';
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.textContent = '実機確認用の設定です（' + cs.label + '）。' +
+    'ふだんの運用では Shift-JIS に戻してください。';
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { QR_CHARSETS, qrCharsetOptionsHtml, qrCharsetInit, qrCharsetNow, qrCharsetFromUrl };
+  module.exports = { QR_CHARSETS, qrCharsetOptionsHtml, qrCharsetInit, qrCharsetNow,
+    qrCharsetFromUrl, qrCharsetBanner };
 }
 
 </script>
@@ -1874,6 +1929,11 @@ function renderMoshikomi(ok) {
   if (ok && !$('mPhone').value.trim()) miss.push('電話番号');
   if (ok && !$('mCity').value.trim() && !$('mAddr').value.trim()) miss.push('ご住所');
   if (miss.length) alerts.push(['ok', '診療申込書でまだ入っていない項目: ' + miss.join('・') + '（分かる範囲で入力してください）']);
+  if (enc.beyondCp932 && enc.beyondCp932.length) {
+    alerts.push(['warn', 'Shift-JISに無い文字が含まれています（UTF-8のまま送ります）→ ' +
+      [...new Set(enc.beyondCp932.map((d) => d.ch))].join(' ') +
+      '　※電子カルテ側で化ける可能性があります。']);
+  }
   if (enc.dropped.length) alerts.push(['warn', 'Shift-JISに変換できない文字を「〓」に置き換えました → ' +
     [...new Set(enc.dropped.map((d) => d.ch))].join(' ') + '　※お名前・ご住所の字は受付で確認してください。']);
   $('alerts2').innerHTML = alerts.map(([k]) => '<div class="alert ' + k + '"></div>').join('');
@@ -1974,6 +2034,11 @@ function render() {
   } else if (sepv === 'tab') {
     alerts.push(['ok', 'Tab は患者登録画面のフィールド移動を試すための設定です。' +
       'カルテ本文へ貼る通常運用では「|」を使ってください。']);
+  }
+  if (enc.beyondCp932 && enc.beyondCp932.length) {
+    alerts.push(['warn', 'Shift-JISに無い文字が含まれています（UTF-8のまま送ります）→ ' +
+      [...new Set(enc.beyondCp932.map((d) => d.ch))].join(' ') +
+      '　※電子カルテ側で化ける可能性があります。原本で確認してください。']);
   }
   if (enc.dropped.length) {
     const list = [...new Set(enc.dropped.map((d) => d.ch))].join(' ');
